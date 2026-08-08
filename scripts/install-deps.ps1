@@ -70,3 +70,12 @@ Install-FromRepo -Repo 'https://github.com/Sxuan-Coder/alibaba-java-development-
 
 Write-Host ''
 Write-Host "Done. All skills installed to $CodexSkillsDir"
+
+Write-Host ''
+Write-Host '提示：CodeGraph 是 search-gates 的工具级前置依赖（CLI + MCP，非 skill），不随本脚本安装。'
+$cg = Get-Command codegraph -ErrorAction SilentlyContinue
+if ($cg) {
+    Write-Host "  检测到 codegraph：$($cg.Source)"
+} else {
+    Write-Host '  未检测到 codegraph；请按 README 官方命令安装（irm .../install.ps1 | iex 或 npm i -g @colbymchenry/codegraph），再运行 codegraph install，并在目标项目执行 codegraph init。'
+}

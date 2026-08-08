@@ -52,3 +52,11 @@ install_from_repo https://github.com/Sxuan-Coder/alibaba-java-development-guide.
 
 echo ""
 echo "Done. All skills installed to $SKILLS_DIR"
+
+echo ""
+echo "提示：CodeGraph 是 search-gates 的工具级前置依赖（CLI + MCP，非 skill），不随本脚本安装。"
+if command -v codegraph >/dev/null 2>&1; then
+  echo "  检测到 codegraph：$(command -v codegraph)"
+else
+  echo "  未检测到 codegraph；请按 README 官方命令安装（curl/irm 或 npm i -g @colbymchenry/codegraph），再运行 codegraph install，并在目标项目执行 codegraph init。"
+fi

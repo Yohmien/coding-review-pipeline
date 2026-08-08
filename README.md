@@ -56,7 +56,7 @@
 
 ## 安装（30 秒设置）
 
-前置：Codex（CLI 或 Desktop）。本 skill 与全部依赖都安装到 `$CODEX_HOME/skills`（默认 `~/.codex/skills`），目录名必须与 SKILL.md frontmatter 的 `name` 一致。
+前置：Codex（CLI 或 Desktop）。本 skill 与全部依赖都安装到 `$CODEX_HOME/skills`（默认 `~/.codex/skills`），目录名必须与 SKILL.md frontmatter 的 `name` 一致。唯一的工具级例外是 `search-gates` 的前置 CodeGraph，见「依赖安装」小节。
 
 > [!IMPORTANT]
 > Codex 的 skills **没有依赖解析**：安装本 skill 不会自动安装它的依赖。下面「依赖安装」必须一起执行，否则流水线会在加载阶段报告缺失并停止，而不是静默降级。
@@ -114,7 +114,31 @@ powershell -ExecutionPolicy Bypass -File scripts/install-deps.ps1
 | `test-driven-development` | 直接依赖：红灯先行 | [obra/superpowers](https://github.com/obra/superpowers) | `npx skills@latest add obra/superpowers --skill test-driven-development -y -g` |
 | `alibaba-java-development-guide` | 直接依赖（条件）：Java 项目 | [Sxuan-Coder/alibaba-java-development-guide](https://github.com/Sxuan-Coder/alibaba-java-development-guide)（SKILL.md 在仓库根目录） | `git clone https://github.com/Sxuan-Coder/alibaba-java-development-guide.git ~/.codex/skills/alibaba-java-development-guide`（目录名即 skill 名），或 `npx skills@latest add Sxuan-Coder/alibaba-java-development-guide` |
 
-`search-gates` 还有工具级前置依赖：**CodeGraph**（项目根 `.codegraph` 索引 + `codegraph explore` CLI 或 `codegraph_explore` MCP），需在目标项目单独初始化，`install-deps` 不会安装它。缺失时图谱闸门不可用，search-gates 会按失败路径降级到 rg 锁定或报告缺失，不假装命中。
+### 工具级前置依赖：CodeGraph（search-gates 的前置）
+
+`search-gates` 的图谱闸门（Step 1）依赖 **CodeGraph**：项目根 `.codegraph` 索引 + `codegraph explore` CLI（或 `codegraph_explore` MCP）。它在 Codex 内以「AGENTS.md 指令块 + MCP server」形式生效，效果等同于一个常驻 skill 级能力，但**不是** SKILL.md 目录，不能用 `$skill-installer` 安装；`install-deps` 也不会、不应安装它（外部工具，且需每项目索引决策）。请按官方链路单独安装：
+
+```bash
+# 1) 安装 CLI（三选一；安装后需重开终端）
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh
+# Windows PowerShell
+irm https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.ps1 | iex
+# 已装 Node 的任意平台
+npm i -g @colbymchenry/codegraph
+
+# 2) 接线到 Codex：写入 [mcp_servers.codegraph] 配置 + AGENTS.md 指令块
+codegraph install
+
+# 3) 在目标项目建立图谱索引（创建 .codegraph/ 并完成首次建图）
+cd <项目根目录>
+codegraph init
+
+# 随时升级
+codegraph upgrade
+```
+
+缺失时图谱闸门不可用，search-gates 会按失败兜底表降级到 Step 3 rg 锁定（显式路径）或报告缺失，不假装命中。
 
 ### 验证安装
 
@@ -164,6 +188,7 @@ codegraph status
 - 加载不到 `grill-with-docs` 时，复杂计划不进入追问门禁，主会话报告缺失并停止，而不是改用「简化版追问」。
 - 加载不到 `verification-before-completion` 时，不声称验证通过。
 - 加载不到 `search-gates` 时，不退回无闸门搜索。
+- 目标项目没有 `.codegraph` 索引时，search-gates 的图谱闸门不可用：按失败兜底表降级到 rg 锁定或报告缺失，不假装命中。
 
 这也是为什么依赖必须显式安装：流水线的纪律密度依赖这些 skill 真实存在。
 
