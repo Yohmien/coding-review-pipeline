@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "scenario": "典型场景：结构定位（图谱入口）",
+    "prompt": "帮我定位 C:/path/to/your-project 里 executeKittingOutbound 的调用链与影响面，给出文件:行号证据，控制搜索成本。",
+    "expected": "走图谱入口：codegraph status 确认索引 → codegraph explore 一次拿源码与调用路径 → 命中即止，回传文件:行号，不盲目 rg/记忆/子代理"
+  },
+  {
+    "id": 2,
+    "scenario": "典型场景：rg 锁定（编辑锚点/覆盖外）",
+    "prompt": "我要改 your-project 的 mapper XML 里 updateSortingQuantity 相关语句，需要全部引用点与精确行号作为编辑锚点。",
+    "expected": "识别 rg 锁定三场景之一（编辑锚点/XML 在图谱覆盖外）→ 一次合并搜索全部目标符号，显式传路径，回传精确行号；不绕图谱空转"
+  },
+  {
+    "id": 3,
+    "scenario": "歧义/失败场景：图谱未命中补搜",
+    "prompt": "图谱里查不到「截料箱反馈」这个业务词的实现，帮我补搜一下。",
+    "expected": "做查询词预处理映射到已验证符号（feedbackCuttingBox）→ 图谱重查一次 → 仍空则失败路径并行化（主线程 rg + 记忆 + 展开子代理同轮，带负锚）→ 主会话核验源码后给结论"
+  }
+]

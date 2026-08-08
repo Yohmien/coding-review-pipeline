@@ -1,0 +1,7 @@
+interface:
+  display_name: "Coding Review Pipeline"
+  short_description: "Architect-owned coding, verification, and fresh review pipeline"
+  default_prompt: "Use $coding-review-pipeline for any project code change."
+
+policy:
+  allow_implicit_invocation: true

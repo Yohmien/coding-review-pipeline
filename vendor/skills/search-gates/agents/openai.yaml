@@ -1,0 +1,4 @@
+interface:
+  display_name: "分层搜索闸门"
+  short_description: "图谱→记忆→rg→子代理四层闸门定位代码，够用即止"
+  default_prompt: "用 $search-gates 定位这个符号的调用链与影响面，按闸门流程控制搜索成本。"
