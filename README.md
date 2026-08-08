@@ -2,6 +2,9 @@
 
 > 作者：Yohmien；仓库名：`coding-review-pipeline`。
 
+<img width="1191" height="408" alt="image" src="https://github.com/user-attachments/assets/041e237e-24ac-4953-b02b-60cab980cd97" />
+
+
 为真实工程而写的 Codex 技能——旨在优化编码编排的可控性。它编排一条完整的变更流水线：探索 → 复杂计划追问 → 计划确认 → live 模型确认 → 任务契约 → coding 子代理实施 → 主会话独立复验 → fresh review → 完成验证。
 
 基于多代理模型，由用户自主可控地选择决策模型和编码模型，以便在保证模型强度匹配角色的基础上，保证编码质量。
