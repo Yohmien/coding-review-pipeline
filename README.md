@@ -2,7 +2,7 @@
 
 > 作者：Yohmien；仓库名：`coding-review-pipeline`。
 
-为真实工程而写的 Codex 技能——不是 vibe coding。它编排一条完整的变更流水线：探索 → 复杂计划追问 → 计划确认 → live 模型确认 → 任务契约 → coding 子代理实施 → 主会话独立复验 → fresh review → 完成验证。
+为真实工程而写的 Codex 技能。它编排一条完整的变更流水线：探索 → 复杂计划追问 → 计划确认 → live 模型确认 → 任务契约 → coding 子代理实施 → 主会话独立复验 → fresh review → 完成验证。
 
 流水线把架构、契约和风险决策留给主会话与用户，把实际 diff 和命令证据留给工作树；子代理报告只是 claims，不能替代证据。依赖被刻意做成**小、可组合、与模型无关**的独立 skill，按需加载，而不是把细则全部复制进本 skill。
 
@@ -95,9 +95,6 @@ python scripts/validate.py ~/.codex/skills
 期望输出：每个 skill 打印 `Skill is valid!`；`name` 与目录名一致。
 
 ## Reference：依赖清单
-
-模仿 [mattpocock/skills](https://github.com/mattpocock/skills) 的 Reference 风格，按「何时加载」分类。
-
 ### 直接依赖（本 skill 显式调用）
 
 - **grill-with-docs** — 复杂计划命中时的追问门禁：先问清全部细节，再输出完整计划；组合 `grilling` 与 `domain-modeling`，追问结论是后续计划、glossary 与 ADR 的唯一输入。
