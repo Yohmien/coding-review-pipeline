@@ -7,6 +7,14 @@ description: 代码库搜索的闸门化决策流程：默认路径为「图谱 
 
 代码库搜索的标准决策流程。把「图谱、记忆、rg 锁定、展开补全」串成默认路径，每步都是条件闸门——信息足够立即止步，禁止无条件四步全跑。本 skill 只约束搜索与定位，不改变 coding/review pipeline。
 
+## 前置依赖
+
+Step 1 图谱闸门依赖 CodeGraph，这是使用本 skill 的前置条件：
+
+- 索引：项目根 `.codegraph`，由 `codegraph init` 创建，`codegraph status` 确认状态。
+- 查询：`codegraph explore "<符号或问题>"` CLI，或 `codegraph_explore` MCP。
+- 缺失时：图谱闸门不可用，不得假装命中；按「失败兜底表」降级到 Step 3 rg 锁定（显式路径）或报告缺失，再继续后续闸门。
+
 ## 流程总览
 
 | 步骤 | 入口条件 | 动作 | 出口 |

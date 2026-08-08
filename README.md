@@ -114,6 +114,8 @@ powershell -ExecutionPolicy Bypass -File scripts/install-deps.ps1
 | `test-driven-development` | 直接依赖：红灯先行 | [obra/superpowers](https://github.com/obra/superpowers) | `npx skills@latest add obra/superpowers --skill test-driven-development -y -g` |
 | `alibaba-java-development-guide` | 直接依赖（条件）：Java 项目 | [Sxuan-Coder/alibaba-java-development-guide](https://github.com/Sxuan-Coder/alibaba-java-development-guide)（SKILL.md 在仓库根目录） | `git clone https://github.com/Sxuan-Coder/alibaba-java-development-guide.git ~/.codex/skills/alibaba-java-development-guide`（目录名即 skill 名），或 `npx skills@latest add Sxuan-Coder/alibaba-java-development-guide` |
 
+`search-gates` 还有工具级前置依赖：**CodeGraph**（项目根 `.codegraph` 索引 + `codegraph explore` CLI 或 `codegraph_explore` MCP）。缺失时图谱闸门不可用，search-gates 会按失败路径降级到 rg 锁定或报告缺失，不假装命中。
+
 ### 验证安装
 
 ```bash
@@ -136,7 +138,7 @@ python scripts/validate.py ~/.codex/skills
 ### 直接依赖（本 skill 显式调用）
 
 - **grill-with-docs** — 复杂计划命中时的追问门禁：先问清全部细节，再输出完整计划；组合 `grilling` 与 `domain-modeling`，追问结论是后续计划、glossary 与 ADR 的唯一输入。
-- **search-gates** — 结构、调用关系、数据流与影响面的搜索闸门；按「图谱 → 记忆 → rg → 子代理展开」四层，信息足够立即止步。
+- **search-gates** — 结构、调用关系、数据流与影响面的搜索闸门；按「图谱 → 记忆 → rg → 子代理展开」四层，信息足够立即止步。前置依赖 CodeGraph 图谱索引。
 - **verification-before-completion** — 完成声明前的证据门禁；没有最新命令输出、退出码与失败数，不允许使用完成措辞。
 - **ponytail** — 编码与 review 阶段的最简可行解纪律；拒绝过度抽象与多余的依赖。
 - **systematic-debugging** — 缺陷修复前强制复现、根因、假设与验证闭环；禁止猜测式修改。
