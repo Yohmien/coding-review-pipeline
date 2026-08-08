@@ -114,7 +114,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install-deps.ps1
 | `test-driven-development` | 直接依赖：红灯先行 | [obra/superpowers](https://github.com/obra/superpowers) | `npx skills@latest add obra/superpowers --skill test-driven-development -y -g` |
 | `alibaba-java-development-guide` | 直接依赖（条件）：Java 项目 | [Sxuan-Coder/alibaba-java-development-guide](https://github.com/Sxuan-Coder/alibaba-java-development-guide)（SKILL.md 在仓库根目录） | `git clone https://github.com/Sxuan-Coder/alibaba-java-development-guide.git ~/.codex/skills/alibaba-java-development-guide`（目录名即 skill 名），或 `npx skills@latest add Sxuan-Coder/alibaba-java-development-guide` |
 
-`search-gates` 还有工具级前置依赖：**CodeGraph**（项目根 `.codegraph` 索引 + `codegraph explore` CLI 或 `codegraph_explore` MCP）。缺失时图谱闸门不可用，search-gates 会按失败路径降级到 rg 锁定或报告缺失，不假装命中。
+`search-gates` 还有工具级前置依赖：**CodeGraph**（项目根 `.codegraph` 索引 + `codegraph explore` CLI 或 `codegraph_explore` MCP），需在目标项目单独初始化，`install-deps` 不会安装它。缺失时图谱闸门不可用，search-gates 会按失败路径降级到 rg 锁定或报告缺失，不假装命中。
 
 ### 验证安装
 
@@ -127,9 +127,12 @@ head -3 ~/.codex/skills/coding-review-pipeline/SKILL.md
 
 # 运行仓库自带校验（复用 openai/skills 的 quick_validate 逻辑）
 python scripts/validate.py ~/.codex/skills
+
+# 验证 CodeGraph（search-gates 的工具级前置依赖；Windows 用 Test-Path .codegraph）
+codegraph status
 ```
 
-期望输出：每个 skill 打印 `Skill is valid!`；`name` 与目录名一致。
+期望输出：每个 skill 打印 `Skill is valid!`；`name` 与目录名一致；`codegraph status` 正常返回索引状态（无索引时按 search-gates 的失败路径处理）。
 
 ## Reference：依赖清单
 
