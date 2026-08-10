@@ -179,6 +179,8 @@ reviewer 必须使用独立、上下文干净的线程，行为只读，并按 t
 
 `ocr` 未安装或命令失败时，按 recovery-and-failures.md 的 if-then 表报告缺失并停止，不静默降级、不跳过规则审查。
 
+审查结论按 task-contracts.md 返回：
+
 - ship：目标、范围和证据足以交付。
 - fix-first：列出文件、位置、证据和必需修复。
 - rethink：架构或契约需要主会话重新定案。
