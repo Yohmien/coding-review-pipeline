@@ -152,7 +152,7 @@ npm install -g @alibaba-group/open-code-review
 ocr delegate preview --help
 ```
 
-要求 Git ≥2.41。缺失或命令失败时，review 子代理按 recovery-and-failures.md 报告缺失并停止，不降级为无规则审查。
+要求 Git ≥2.41。`delegate preview` 只识别代码扩展名，.md 等非代码文件会被标注 `unsupported_ext` 排除、不进入可审集。缺失或命令失败时，review 子代理按 recovery-and-failures.md 报告缺失并停止，不降级为无规则审查。
 
 ### 验证安装
 

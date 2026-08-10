@@ -172,10 +172,10 @@ advisor 只给 proceed | change | stop，不能替主会话决策。coder 只修
 
 reviewer 必须使用独立、上下文干净的线程，行为只读，并按 task-contracts.md 返回。派发后第一步必须执行 open-code-review delegate：
 
-1. `ocr delegate preview --format json` 确定审查文件集、模式（workspace / range / commit）与 ref 元数据；按主会话给定的 diff 范围必要时带 `--from/--to` 或 `--commit`。
+1. `ocr delegate preview` 确定审查文件集、模式（workspace / range / commit）与 ref 元数据；按主会话给定的 diff 范围带 `--from/--to` 或 `-c/--commit`。输出为文本清单，被排除文件标注 excluded 原因（如 `unsupported_ext`，.md 等非代码文件不在可审集内，不计入覆盖率）。
 2. `ocr delegate rule <path...>` 按文件取规则组；共享同一规则组的文件合并审查，避免重复读取。
 3. 按规则组逐文件审查：range 模式用 `git diff <merge_base>..<to>`、commit 模式用 `git show <commit>`、workspace 模式用 `git diff HEAD`（未跟踪新文件直接读全文），再对照规则审查，输出含 path、severity、category 与行号的评论。
-4. 全部文件必须 reviewed 或显式 skipped（附原因），汇总给出 total_files、reviewed_files、skipped_files、coverage_rate，按严重度分组报告。
+4. preview 可审集内的文件必须全部 reviewed 或显式 skipped（附原因），汇总给出 total_files、reviewed_files、skipped_files、coverage_rate，按严重度分组报告；被 preview 排除的文件不强制补审。
 
 `ocr` 未安装或命令失败时，按 recovery-and-failures.md 的 if-then 表报告缺失并停止，不静默降级、不跳过规则审查。
 

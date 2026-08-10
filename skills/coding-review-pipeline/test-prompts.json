@@ -33,6 +33,6 @@
     "id": 6,
     "scenario": "fresh review 子代理第一步执行 open-code-review",
     "prompt": "coder 已完成修改，请以 fresh reviewer 身份审查当前工作区的最终 diff。",
-    "expected": "reviewer 第一步执行 ocr delegate preview 与 ocr delegate rule，按规则组逐文件对照审查，全部文件 reviewed 或显式 skipped 并报告覆盖率；ocr 缺失时报告并停止，不降级为无规则审查；随后按 ship/fix-first/rethink 返回 verdict。"
+    "expected": "reviewer 第一步执行 ocr delegate preview 与 ocr delegate rule，按规则组逐文件对照审查，preview 可审集内文件全部 reviewed 或显式 skipped 并报告覆盖率；被排除文件（如 .md）不强制补审；ocr 缺失时报告并停止，不降级为无规则审查；随后按 ship/fix-first/rethink 返回 verdict。"
   }
 ]
