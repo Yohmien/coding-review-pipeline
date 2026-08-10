@@ -77,8 +77,8 @@ fresh reviewer 必须独立于实现过程，只根据规范化任务、工作�
 
 reviewer 的第一步是 open-code-review delegate（确定性工程，不调用 LLM）：
 
-1. 运行 `ocr delegate preview --format json`（按任务给定的 diff 范围，必要时带 `--from/--to` 或 `--commit`），得到审查文件集、模式与 ref 元数据。
-2. 运行 `ocr delegate rule <path...>` 为文件取规则组；共享规则组的文件合并审查。
+1. 运行 `ocr delegate preview --format json`（按任务给定的 diff 范围带 `--from/--to` 或 `-c/--commit`；仓库非当前目录时加 `--repo <path>`；有业务上下文时加 `-b "context"`；需要排除时加 `--exclude <patterns>`），得到审查文件集、模式与 ref 元数据。
+2. 运行 `ocr delegate rule <path...>`（可加 `--rule <path>` 指定项目自定义规则）为文件取规则组；共享规则组的文件合并审查。
 3. 按规则组逐文件审查：range 用 `git diff <merge_base>..<to>`、commit 用 `git show <commit>`、workspace 用 `git diff HEAD`，未跟踪新文件直接读全文；对照规则输出含 path、severity、category、行号的评论。
 4. 全部文件 reviewed 或显式 skipped（附原因）；汇总报告 total_files、reviewed_files、skipped_files、coverage_rate。
 
@@ -94,6 +94,7 @@ TASK
 OCR DELEGATE (第一步，先于一切审查)
 - ocr delegate preview：审查文件集、模式与 ref 元数据。
 - ocr delegate rule：每文件的规则组。
+- 共享 flag：`--repo`（仓库根，默认 cwd）、`--from/--to` 或 `-c/--commit`（范围）、`--exclude`（排除模式）、`-b`（业务上下文）、`-f json`（输出格式）。
 - 按规则组逐文件对照审查；缺失 ocr 时在 GAPS 报告并停止。
 
 ACTUAL DIFF
