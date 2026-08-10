@@ -49,7 +49,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 - 工作树已脏、多任务并行、线程中断或发生失败时，读取 [references/recovery-and-failures.md](references/recovery-and-failures.md)。
 - 定位结构、调用关系、数据流或影响面时调用 search-gates，不在本 skill 复制搜索细则。
 - 计划命中下述复杂条件时调用 grill-with-docs；该 skill 会组合 grilling 与 domain-modeling，必须先完成追问门禁再形成完整计划。
-- Java 项目按任务主题调用 alibaba-java-development-guide；编码和 review 应用 ponytail。
+- 编码和 review 应用 ponytail；review 子代理第一步必须执行 open-code-review（ocr delegate），见“Fresh review 与修正循环”。
 - 缺陷修复调用 systematic-debugging；可测实现调用 test-driven-development；完成声明前调用 verification-before-completion。只读取适用 skill，不复制其规则。
 
 ## 依赖与前置
@@ -67,9 +67,9 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 | `systematic-debugging` | obra/superpowers（或等价 curated 来源） | 缺陷修复 |
 | `test-driven-development` | obra/superpowers（或等价 curated 来源） | 可测实现 |
 
-### 条件依赖
+### 工具级前置依赖
 
-- `alibaba-java-development-guide`：仅 Java 项目按任务主题加载；来源 [Sxuan-Coder/alibaba-java-development-guide](https://github.com/Sxuan-Coder/alibaba-java-development-guide)（SKILL.md 在仓库根目录，目录名即 skill 名）。
+- `open-code-review`（`ocr` CLI，delegate 模式）：review 子代理第一步的确定性工程来源（文件筛选与规则解析）。来源 [alibaba/open-code-review](https://github.com/alibaba/open-code-review)；安装 `npm install -g @alibaba-group/open-code-review`（需 Node ≥14；要求 Git ≥2.41）。delegate 模式不需要配置 LLM。缺失或命令失败时，review 子代理按 recovery-and-failures.md 报告并停止，不降级为无规则审查。
 
 ### 传递依赖
 
@@ -170,7 +170,14 @@ advisor 只给 proceed | change | stop，不能替主会话决策。coder 只修
 
 ### 7. Fresh review 与修正循环
 
-reviewer 必须使用独立、上下文干净的线程，行为只读，并按 task-contracts.md 返回：
+reviewer 必须使用独立、上下文干净的线程，行为只读，并按 task-contracts.md 返回。派发后第一步必须执行 open-code-review delegate：
+
+1. `ocr delegate preview --format json` 确定审查文件集、模式（workspace / range / commit）与 ref 元数据；按主会话给定的 diff 范围必要时带 `--from/--to` 或 `--commit`。
+2. `ocr delegate rule <path...>` 按文件取规则组；共享同一规则组的文件合并审查，避免重复读取。
+3. 按规则组逐文件审查：range 模式用 `git diff <merge_base>..<to>`、commit 模式用 `git show <commit>`、workspace 模式用 `git diff HEAD`（未跟踪新文件直接读全文），再对照规则审查，输出含 path、severity、category 与行号的评论。
+4. 全部文件必须 reviewed 或显式 skipped（附原因），汇总给出 total_files、reviewed_files、skipped_files、coverage_rate，按严重度分组报告。
+
+`ocr` 未安装或命令失败时，按 recovery-and-failures.md 的 if-then 表报告缺失并停止，不静默降级、不跳过规则审查。
 
 - ship：目标、范围和证据足以交付。
 - fix-first：列出文件、位置、证据和必需修复。
@@ -206,5 +213,6 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - 信任 worker 自报而不检查实际 diff 和重跑验证。
 - 并行修改重叠文件，或把 raw 子代理对话转给其他代理。
 - reviewer 自行修复，或修复后继续沿用旧 verdict。
+- review 子代理跳过 open-code-review delegate 第一步（preview/rule），或无规则审查仍给出 verdict。
 - 未检查工作区就重复派发，或使用破坏性回滚覆盖用户改动。
 - 无最新命令证据声称通过，或误删正式/回归测试。

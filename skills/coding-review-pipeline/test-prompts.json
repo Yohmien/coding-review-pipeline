@@ -28,5 +28,11 @@
     "scenario": "已选模型不再受 live schema 支持",
     "prompt": "计划已经确认，继续按我上次选的 coding/review 模型和 effort 开始修改；如果模型不可用就自动换一个。",
     "expected": "重新读取当前 spawn_agent live schema；仅在原选择仍受支持时复用。任一模型或 effort 不可用时明确停止并报告缺失能力，不静默替换、降级、跳过 reviewer，也不由主会话代写。"
+  },
+  {
+    "id": 6,
+    "scenario": "fresh review 子代理第一步执行 open-code-review",
+    "prompt": "coder 已完成修改，请以 fresh reviewer 身份审查当前工作区的最终 diff。",
+    "expected": "reviewer 第一步执行 ocr delegate preview 与 ocr delegate rule，按规则组逐文件对照审查，全部文件 reviewed 或显式 skipped 并报告覆盖率；ocr 缺失时报告并停止，不降级为无规则审查；随后按 ship/fix-first/rethink 返回 verdict。"
   }
 ]

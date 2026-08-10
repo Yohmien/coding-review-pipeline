@@ -66,7 +66,6 @@ Install-FromRepo -Repo 'https://github.com/obra/superpowers.git' -Path 'skills/v
 Install-FromRepo -Repo 'https://github.com/obra/superpowers.git' -Path 'skills/systematic-debugging' -Name 'systematic-debugging'
 Install-FromRepo -Repo 'https://github.com/obra/superpowers.git' -Path 'skills/test-driven-development' -Name 'test-driven-development'
 Install-FromRepo -Repo 'https://github.com/DietrichGebert/ponytail.git' -Path 'skills/ponytail' -Name 'ponytail'
-Install-FromRepo -Repo 'https://github.com/Sxuan-Coder/alibaba-java-development-guide.git' -Path '.' -Name 'alibaba-java-development-guide'
 
 Write-Host ''
 Write-Host "Done. All skills installed to $CodexSkillsDir"
@@ -78,4 +77,13 @@ if ($cg) {
     Write-Host "  检测到 codegraph：$($cg.Source)"
 } else {
     Write-Host '  未检测到 codegraph；请按 README 官方命令安装（irm .../install.ps1 | iex 或 npm i -g @colbymchenry/codegraph），再运行 codegraph install，并在目标项目执行 codegraph init。'
+}
+
+Write-Host ''
+Write-Host '提示：open-code-review（ocr CLI）是 review 第一步的工具级前置依赖（非 skill，delegate 模式不调用 LLM），不随本脚本全局安装。'
+$ocr = Get-Command ocr -ErrorAction SilentlyContinue
+if ($ocr) {
+    Write-Host "  检测到 ocr：$($ocr.Source)"
+} else {
+    Write-Host '  未检测到 ocr；请按 README 官方命令安装（npm install -g @alibaba-group/open-code-review，需 Node ≥14；要求 Git ≥2.41）。'
 }

@@ -48,7 +48,6 @@ install_from_repo https://github.com/obra/superpowers.git skills/verification-be
 install_from_repo https://github.com/obra/superpowers.git skills/systematic-debugging systematic-debugging
 install_from_repo https://github.com/obra/superpowers.git skills/test-driven-development test-driven-development
 install_from_repo https://github.com/DietrichGebert/ponytail.git skills/ponytail ponytail
-install_from_repo https://github.com/Sxuan-Coder/alibaba-java-development-guide.git . alibaba-java-development-guide
 
 echo ""
 echo "Done. All skills installed to $SKILLS_DIR"
@@ -59,4 +58,12 @@ if command -v codegraph >/dev/null 2>&1; then
   echo "  检测到 codegraph：$(command -v codegraph)"
 else
   echo "  未检测到 codegraph；请按 README 官方命令安装（curl/irm 或 npm i -g @colbymchenry/codegraph），再运行 codegraph install，并在目标项目执行 codegraph init。"
+fi
+
+echo ""
+echo "提示：open-code-review（ocr CLI）是 review 第一步的工具级前置依赖（非 skill，delegate 模式不调用 LLM），不随本脚本全局安装。"
+if command -v ocr >/dev/null 2>&1; then
+  echo "  检测到 ocr：$(command -v ocr)"
+else
+  echo "  未检测到 ocr；请按 README 官方命令安装（npm install -g @alibaba-group/open-code-review，需 Node ≥14；要求 Git ≥2.41）。"
 fi

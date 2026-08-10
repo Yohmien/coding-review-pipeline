@@ -24,7 +24,7 @@
 5. **过度工程**——为不存在的问题做抽象。修复：`ponytail` 在编码与 review 阶段强制最简可行解。
 6. **缺陷乱猜修复**——症状修复掩盖根因。修复：`systematic-debugging` 强制复现-根因-假设-验证闭环。
 7. **先写码后写测试**——可测实现没有红灯先行。修复：`test-driven-development`。
-8. **Java 规约不一致**——团队手册与代码现实脱节。修复：`alibaba-java-development-guide`（仅 Java 项目触发）。
+8. **review 规则与实现脱节**——reviewer 凭记忆审查，规则不落地、覆盖不全。修复：`open-code-review` delegate 模式（review 子代理第一步按内置多语言规则集逐文件审查）。
 
 ## 工作流程
 
@@ -39,7 +39,7 @@
 5. **生成任务契约**——按五段 packet（目标、文件所有权、接口、约束、验证）下发 coder，声明可写集与只读依赖，禁止转发 raw 对话。
 6. **风险路由与实施**——单点任务直接 coder；多任务按文件集是否重叠决定并行/串行；并发、事务、安全、迁移、公共 API 等高风险先经 fresh advisor 检查再实施。
 7. **主会话独立复验**——检查 `git status`、完整 diff 与未跟踪文件，重跑验证命令并读取退出码与失败数，不以 coder 摘要代替证据。
-8. **fresh review**——reviewer 使用独立、上下文干净的线程，行为只读、不亲手修复；以主会话提供的实际 diff 与命令证据为准，不以 coder 摘要代替；任何代码变化后旧 verdict 立即失效，必须重新复验并获取新 verdict，单个任务与集成各最多三轮。
+8. **fresh review**——reviewer 使用独立、上下文干净的线程，行为只读、不亲手修复；派发后第一步执行 `open-code-review` delegate（`ocr delegate preview` + `ocr delegate rule`），按规则组逐文件对照审查并报告覆盖率；以主会话提供的实际 diff 与命令证据为准，不以 coder 摘要代替；任何代码变化后旧 verdict 立即失效，必须重新复验并获取新 verdict，单个任务与集成各最多三轮。
 9. **完成条件**——全部任务获得当前 diff 对应的 fresh ship，且具备最新验证证据、明确未执行项，才允许使用完成措辞。
 
 ## 优势
@@ -56,7 +56,7 @@
 
 ## 安装（30 秒设置）
 
-前置：Codex（CLI 或 Desktop）。本 skill 与全部依赖都安装到 `$CODEX_HOME/skills`（默认 `~/.codex/skills`），目录名必须与 SKILL.md frontmatter 的 `name` 一致。唯一的工具级例外是 `search-gates` 的前置 CodeGraph，见「依赖安装」小节。
+前置：Codex（CLI 或 Desktop）。本 skill 与全部依赖都安装到 `$CODEX_HOME/skills`（默认 `~/.codex/skills`），目录名必须与 SKILL.md frontmatter 的 `name` 一致。工具级例外是 `search-gates` 的前置 CodeGraph 与 review 第一步的 `ocr` CLI，见「依赖安装」小节。
 
 > [!IMPORTANT]
 > Codex 的 skills **没有依赖解析**：安装本 skill 不会自动安装它的依赖。下面「依赖安装」必须一起执行，否则流水线会在加载阶段报告缺失并停止，而不是静默降级。
@@ -112,7 +112,7 @@ powershell -ExecutionPolicy Bypass -File scripts/install-deps.ps1
 | `ponytail` | 直接依赖：最简可行解纪律 | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | `npx skills@latest add DietrichGebert/ponytail --skill ponytail -y -g` |
 | `systematic-debugging` | 直接依赖：根因调试闭环 | [obra/superpowers](https://github.com/obra/superpowers) | `npx skills@latest add obra/superpowers --skill systematic-debugging -y -g` |
 | `test-driven-development` | 直接依赖：红灯先行 | [obra/superpowers](https://github.com/obra/superpowers) | `npx skills@latest add obra/superpowers --skill test-driven-development -y -g` |
-| `alibaba-java-development-guide` | 直接依赖（条件）：Java 项目 | [Sxuan-Coder/alibaba-java-development-guide](https://github.com/Sxuan-Coder/alibaba-java-development-guide)（SKILL.md 在仓库根目录） | `git clone https://github.com/Sxuan-Coder/alibaba-java-development-guide.git ~/.codex/skills/alibaba-java-development-guide`（目录名即 skill 名），或 `npx skills@latest add Sxuan-Coder/alibaba-java-development-guide` |
+| `open-code-review`（`ocr` CLI） | 工具级前置：review 子代理第一步（delegate 模式） | [alibaba/open-code-review](https://github.com/alibaba/open-code-review) | `npm install -g @alibaba-group/open-code-review`（需 Node ≥14；要求 Git ≥2.41） |
 
 ### 工具级前置依赖：CodeGraph（search-gates 的前置）
 
@@ -140,6 +140,20 @@ codegraph upgrade
 
 缺失时图谱闸门不可用，search-gates 会按失败兜底表降级到 Step 3 rg 锁定（显式路径）或报告缺失，不假装命中。
 
+### 工具级前置依赖：open-code-review（review 第一步的前置）
+
+fresh review 子代理的第一步是 **open-code-review delegate**：`ocr` 只做确定性工程（文件筛选与规则解析），不调用 LLM，实际审查由 reviewer 自身完成，因此不需要额外配置 LLM endpoint。它**不是** SKILL.md 目录，不能用 `$skill-installer` 安装；`install-deps` 只检测并提示，不自动全局安装。请按官方链路单独安装：
+
+```bash
+# 需要 Node ≥14（npm 或 pnpm 全局安装均可）
+npm install -g @alibaba-group/open-code-review
+
+# 验证
+ocr delegate preview --help
+```
+
+要求 Git ≥2.41。缺失或命令失败时，review 子代理按 recovery-and-failures.md 报告缺失并停止，不降级为无规则审查。
+
 ### 验证安装
 
 ```bash
@@ -154,6 +168,9 @@ python scripts/validate.py ~/.codex/skills
 
 # 验证 CodeGraph（search-gates 的工具级前置依赖；Windows 用 Test-Path .codegraph）
 codegraph status
+
+# 验证 ocr（review 第一步的工具级前置依赖；Windows 用 Get-Command ocr）
+ocr delegate --help
 ```
 
 期望输出：每个 skill 打印 `Skill is valid!`；`name` 与目录名一致；`codegraph status` 正常返回索引状态（无索引时按 search-gates 的失败路径处理）。
@@ -170,7 +187,7 @@ codegraph status
 - **ponytail** — 编码与 review 阶段的最简可行解纪律；拒绝过度抽象与多余的依赖。
 - **systematic-debugging** — 缺陷修复前强制复现、根因、假设与验证闭环；禁止猜测式修改。
 - **test-driven-development** — 可测实现的红灯先行纪律；先写失败测试，再实现，再重构。
-- **alibaba-java-development-guide** — 仅 Java 项目按任务主题加载；统一编码规约、异常日志、数据库与工程结构标准。
+- **open-code-review（`ocr` CLI）** — review 子代理第一步的确定性工程：`ocr delegate preview` 确定审查文件集、模式与 ref 元数据，`ocr delegate rule` 按文件取规则组；仅做文件筛选与规则解析，不调用 LLM，实际审查由 reviewer 自身完成。
 
 ### 传递依赖（经 grill-with-docs 间接使用）
 

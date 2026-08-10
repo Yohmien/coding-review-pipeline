@@ -75,12 +75,26 @@ RESIDUAL RISKS: proceed 后仍需跟踪的风险
 
 fresh reviewer 必须独立于实现过程，只根据规范化任务、工作区中的实际 diff 和主会话验证证据审查最终整体。其行为严格只读：不得修改文件、不得实现或代办修复、不得运行会写入工作区的命令、不得派生其他代理。
 
+reviewer 的第一步是 open-code-review delegate（确定性工程，不调用 LLM）：
+
+1. 运行 `ocr delegate preview --format json`（按任务给定的 diff 范围，必要时带 `--from/--to` 或 `--commit`），得到审查文件集、模式与 ref 元数据。
+2. 运行 `ocr delegate rule <path...>` 为文件取规则组；共享规则组的文件合并审查。
+3. 按规则组逐文件审查：range 用 `git diff <merge_base>..<to>`、commit 用 `git show <commit>`、workspace 用 `git diff HEAD`，未跟踪新文件直接读全文；对照规则输出含 path、severity、category、行号的评论。
+4. 全部文件 reviewed 或显式 skipped（附原因）；汇总报告 total_files、reviewed_files、skipped_files、coverage_rate。
+
+`ocr` 未安装或命令失败时，在 `GAPS` 中报告缺失项并停止，不降级为无规则审查。
+
 ```text
 ROLE
 - 你是已获授权的 fresh final/integration reviewer，不是主会话。
 
 TASK
 - 主会话规范化的目标、验收标准、接口契约、约束与风险边界。
+
+OCR DELEGATE (第一步，先于一切审查)
+- ocr delegate preview：审查文件集、模式与 ref 元数据。
+- ocr delegate rule：每文件的规则组。
+- 按规则组逐文件对照审查；缺失 ocr 时在 GAPS 报告并停止。
 
 ACTUAL DIFF
 - 主会话核验后的完整实际 diff 和实际改动文件清单，而非 coder 自报摘要。
