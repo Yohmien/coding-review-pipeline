@@ -287,9 +287,10 @@ def _validate_ledger(ledger: dict, expected_run_id: str | None = None) -> None:
 
     Hard container shapes raise CrpError(invalid_input); baseline violations
     carry ``section="baseline"`` so resume can map them to plan
-    reconfirmation. Soft shapes (non-dict values inside
-    tasks/agents/decisions/integration) are classified by
-    ``soft_shape_violations`` and are deliberately NOT rejected here.
+    reconfirmation. Soft shapes (non-dict values inside tasks/agents/decisions)
+    are classified by ``soft_shape_violations`` and are deliberately NOT
+    rejected here; integration values are gated at write time by
+    ``_validate_integration_write`` instead.
     """
 
     if not isinstance(ledger, dict):
@@ -352,11 +353,14 @@ def _validate_ledger(ledger: dict, expected_run_id: str | None = None) -> None:
         raise CrpError("invalid_input", "ledger.events must be a list")
 
 
-_SOFT_SHAPE_SECTIONS = ("tasks", "agents", "decisions", "integration")
+_SOFT_SHAPE_SECTIONS = ("tasks", "agents", "decisions")
 
 
 def soft_shape_violations(ledger: dict) -> set[str]:
     """Classify soft-shape violations: sections whose values include non-dicts.
+
+    integration is intentionally absent: its values are string-scalar gated at
+    write time by ``_validate_integration_write`` and tolerated on read paths.
 
     Single-owner classification consumed by the per-command mapping: update
     rejects newly written violations (exit 2), resume degrades per its locked
@@ -371,6 +375,27 @@ def soft_shape_violations(ledger: dict) -> set[str]:
         if any(not isinstance(value, dict) for value in mapping.values()):
             violating.add(section)
     return violating
+
+
+def _validate_integration_write(changes_integration: object) -> None:
+    """Reject any non-string value written into the integration section.
+
+    completion_gate requires top-level ``integration.latest_verdict == "ship"``
+    and a string ``verdict_diff_fingerprint``, so a non-string value can never
+    produce a legal state. Any dict/list/number/null value written into the
+    integration section is rejected before the update lands; legacy non-scalar
+    values already present in a stored ledger remain tolerated on read paths.
+    """
+
+    if not isinstance(changes_integration, dict):
+        return
+    for key, value in changes_integration.items():
+        if not isinstance(value, str):
+            raise CrpError(
+                "invalid_input",
+                "integration entries must be strings",
+                key=key,
+            )
 
 
 def _load_ledger_file(path: Path) -> dict:
@@ -431,6 +456,7 @@ def update_ledger(
     if not isinstance(changes, dict):
         raise CrpError("invalid_input", "changes must be an object")
     ledger = load_ledger(run_id, start=start, codex_home=codex_home)
+    _validate_integration_write(changes.get("integration"))
     written_sections = set(changes) & set(_SOFT_SHAPE_SECTIONS)
     _apply_changes(ledger, changes)
     _validate_ledger(ledger, run_id)

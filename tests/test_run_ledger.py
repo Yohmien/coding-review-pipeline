@@ -29,6 +29,7 @@ SCRIPTS = ROOT / "skills" / "coding-review-pipeline" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import crp_common  # noqa: E402
 import run_ledger  # noqa: E402
+import completion_gate  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -361,6 +362,7 @@ class TestLedgerPersistence(unittest.TestCase):
             ("agents", 3),
             ("decisions", ["x"]),
             ("integration", None),
+            ("integration", "not-an-object"),
             ("events", {"a": 1}),
         ]
         for field, bad in cases:
@@ -374,6 +376,102 @@ class TestLedgerPersistence(unittest.TestCase):
         self.assertEqual(reloaded["decisions"], {})
         self.assertEqual(reloaded["integration"], {})
         self.assertEqual(reloaded["events"], [])
+
+
+class TestIntegrationSection(unittest.TestCase):
+    """Integration write semantics (locked contract T-INTEGRATION-RECORD).
+
+    integration is merged field-by-field, accepts only string scalar values
+    at write time, tolerates legacy non-scalar values on read paths, and must
+    satisfy completion_gate's string-based integration verdict checks.
+    """
+
+    def test_scalar_updates_merge_and_gate_allows(self):
+        repo = make_repo({"README.md": "r\n"})
+        plan = _plan()
+        run_ledger.write_ledger(
+            run_ledger.new_ledger("r1", str(repo), plan=plan), "r1", start=repo
+        )
+        facts = {
+            "changed_files": ["src/A.java"],
+            "untracked_files": [],
+            "diff_ranges": {},
+        }
+        fp = run_ledger.diff_fingerprint(facts)
+        run_ledger.update_ledger(
+            "r1", {"integration": {"latest_verdict": "ship"}}, start=repo
+        )
+        run_ledger.update_ledger(
+            "r1", {"integration": {"verdict_diff_fingerprint": fp}}, start=repo
+        )
+        reloaded = run_ledger.load_ledger("r1", start=repo)
+        self.assertEqual(reloaded["integration"]["latest_verdict"], "ship")
+        self.assertEqual(reloaded["integration"]["verdict_diff_fingerprint"], fp)
+
+        run_ledger.update_ledger(
+            "r1",
+            {
+                "tasks": {
+                    "T1": _task(
+                        latest_verdict="ship",
+                        verdict_diff_fingerprint=fp,
+                        verification=[
+                            {
+                                "command": "pytest",
+                                "exit_code": 0,
+                                "failure_count": 0,
+                                "diff_fingerprint": fp,
+                            }
+                        ],
+                    )
+                }
+            },
+            start=repo,
+        )
+        run_ledger.update_ledger(
+            "r1", {"decisions": {"D1": {"status": "resolved"}}}, start=repo
+        )
+        ledger = run_ledger.load_ledger("r1", start=repo)
+        result = completion_gate.evaluate(ledger, change_facts=facts)
+        self.assertEqual(result, {"conclusion": "COMPLETE_ALLOWED"})
+
+    def test_update_rejects_non_string_integration_values_no_write(self):
+        repo = make_repo({"README.md": "r\n"})
+        run_ledger.write_ledger(
+            run_ledger.new_ledger("r1", str(repo), plan=_plan()), "r1", start=repo
+        )
+        path = run_ledger.ledger_path("r1", start=repo)
+        original = path.read_bytes()
+        bad_values = (
+            {"i": ["x"]},
+            {"n": 7},
+            {"n": None},
+            {"i": {"x": 1}},
+        )
+        for value in bad_values:
+            with self.subTest(value=value):
+                with self.assertRaises(crp_common.CrpError) as context:
+                    run_ledger.update_ledger("r1", {"integration": value}, start=repo)
+                self.assertEqual(context.exception.code, "invalid_input")
+                self.assertEqual(path.read_bytes(), original)
+        reloaded = run_ledger.load_ledger("r1", start=repo)
+        self.assertEqual(reloaded["integration"], {})
+
+    def test_read_paths_tolerate_legacy_non_scalar_integration_values(self):
+        repo = make_repo({"README.md": "r\n"})
+        ledger = run_ledger.new_ledger("r1", str(repo), plan=_plan())
+        ledger["integration"] = {"i": ["x"]}
+        run_ledger.write_ledger(ledger, "r1", start=repo)
+
+        reloaded = run_ledger.load_ledger("r1", start=repo)
+        self.assertEqual(reloaded["integration"], {"i": ["x"]})
+
+        runs = run_ledger.list_runs(start=repo)
+        self.assertEqual([item["run_id"] for item in runs], ["r1"])
+        self.assertNotIn("corrupt", runs[0])
+
+        state = run_ledger.resume_state("r1", start=repo)
+        self.assertTrue(state["ok"])
 
 
 class TestTaskAndAgentFields(unittest.TestCase):
@@ -879,7 +977,10 @@ class TestNoInternalErrorMatrix(unittest.TestCase):
             "tasks": ({"T1": "bad"}, [1, 2], "x", 7, None),
             "agents": ({"a1": ["ACTIVE"]}, [1, 2], "x", 7, None),
             "decisions": ({"D1": "open"}, [1, 2], "x", 7, None),
-            "integration": ({"i": ["x"]}, [1, 2], "x", 7, None),
+            # integration values are no longer soft-shape checked: legacy
+            # non-scalar values are tolerated on read paths, so only the
+            # top-level container violations remain malformed ledger shapes.
+            "integration": ([1, 2], "x", 7, None),
         }
         commands = (
             ["load", "--run-id", run_id, "--repo", str(repo)],
