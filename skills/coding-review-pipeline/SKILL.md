@@ -90,6 +90,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 ## 核心状态机
 
+主流程：1 探索与定案 → 1.5 G1 追问门禁 → 2 完整计划确认 → 3 Live 模型确认 → 4 生成任务契约 → 5 风险路由与实施 → 6 主会话独立复验 → 7 Fresh review 与修正循环 → 完成条件（completion_gate 放行）。
+
 ### 1. 探索与定案
 
 1. 用 `scripts/change_facts.py` 收集 change facts，并检查 AGENTS.md、git status --short 和用户已有改动。
@@ -98,9 +100,13 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 4. 主会话定案接口、数据契约、边界、异常、事务、并发、幂等、超时、重试和补偿。
 5. 判定风险等级与任务依赖，列出允许修改的文件集合。
 
+输出：change facts、根因证据、已定案接口与边界、允许修改的文件集合。
+
 ### 1.5 G1 追问门禁（one-hop）
 
 是否追问由 `scripts/route_context.py` 的 G1 User Decision Gate 决定，可读契约见 [references/routing-gates.md](references/routing-gates.md)：只有输出 `REQUIRES_USER_DECISION` 才路由 grill-with-docs（tools 附带 request_user_input）；多文件、多模块、CodeGraph、rg、工具/测试/阅读数量等一律不是 G1 触发条件。命中后按 grill-with-docs（及传递的 grilling / domain-modeling）执行追问，细节不复制到本 skill；G1 输出 `NONE` 时跳过，直接根据探索证据形成完整计划。
+
+输出：G1 判定与已确认的用户决策（未命中则直接进入完整计划）。
 
 ### 2. 完整计划确认
 
@@ -113,6 +119,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 - 测试与验证命令、风险、回滚或补偿。
 
 🔴 CHECKPOINT · 🛑 STOP：用户未确认完整计划前，不展示模型选择，不派 coding 子代理，不修改项目代码。
+
+输出：已确认的完整计划。
 
 ### 3. Live 能力与模型确认
 
@@ -127,6 +135,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 🔴 CHECKPOINT · 🛑 STOP：四项未确认，或 live 工具不支持任一选择时，停止编码并报告缺失能力；不得使用静态候选、静默降级或主会话代写。
 
+输出：已确认的 coding model、review model、coding effort、review effort 四项。
+
 ### 4. 生成任务契约
 
 1. 按 task-contracts.md 生成五段 coder packet：目标、文件所有权、接口、约束、验证。
@@ -134,6 +144,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 3. 规格定案所有影响接口、契约、安全和范围的判断；允许 coder 处理局部低风险实现判断，但必须在返回中报告。
 4. 每个任务声明可写集和必要只读依赖；禁止转发主会话完整对话或其他子代理 raw 对话。
 5. 单文件单点任务保持单任务，不为并行而过度拆分；拆分与并行可行性以 task_graph.py 的 CAN 输出为准。
+
+输出：通过 `validate_task_packet.py` 校验的 coder packet。
 
 ### 5. 风险路由与实施
 
@@ -147,6 +159,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 advisor 只给 proceed | change | stop，不能替主会话决策。coder 只修改授权文件，按 packet 验证并返回实际证据。
 
+输出：按 G2/G4 路由的实施计划与派发指令。
+
 ### 6. 主会话独立复验
 
 每轮 coder 返回后，主会话必须：
@@ -155,6 +169,8 @@ advisor 只给 proceed | change | stop，不能替主会话决策。coder 只修
 2. 发现范围外变化立即停止，不静默归入任务。
 3. 按 verification-routing.md 重跑适用命令并读取完整输出、退出码和失败数。
 4. 将实际 diff 和主会话证据提供给 fresh reviewer；不以 coder 摘要代替。
+
+输出：复验证据包（完整 diff、命令输出、退出码、失败数）。
 
 ### 7. Fresh review 与修正循环
 
@@ -173,6 +189,8 @@ reviewer 必须使用独立、上下文干净的线程，行为只读，并按 t
 fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置派后续 coder。rethink 回到探索与计划阶段。任何代码变化后必须重新复验并获取 fresh verdict。
 
 单个任务和集成 review 各最多 3 轮；仍不收敛时停止并向用户报告累计证据。独立任务可继续，但不得在未全部 ship 前声明整体完成。
+
+输出：fresh verdict（ship / fix-first / rethink）。
 
 ## 工作树、线程与恢复
 
