@@ -177,6 +177,9 @@ P3  broader repository search（仅 reviewer 请求）
 每级输出 `tier / files / estimated_chars / omitted / reason`，尽量可观测 context 大小。
 P0 的 `files` 纳入 `--facts`（change facts 路径）、`--task-facts` 与 `--verification` 传入的文件
 路径，使 reason 文案与实际内容一致。
+`--verification` 证据文件只接受两种形状：JSON list，或 `{"records": [...]}`；其余形状（如
+`{"runs": [...]}`）以 invalid_input 退出。主会话打包验证证据时必须用其一，否则 preflight 无法
+消费、reviewer 只能手工核对。
 
 ## 退出码
 
