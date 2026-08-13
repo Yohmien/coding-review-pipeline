@@ -81,10 +81,9 @@
 | 达到线程上限 | 回收已完成且无后续用途的线程，再按拓扑分批或串行 | 不关闭运行中或待修正线程；不得用重叠写集强行合并并行 |
 | 逐任务或集成修正已满 3 轮 | 停止该闭环并汇总累计发现 | 上报未收敛原因、各轮证据和安全停点，不得改名重开规避上限 |
 | 当前目录不是 Git 仓库 | 标记 `NON_GIT`，采用目录清单与条件指纹，只做可审计动作 | 无可靠基线时停止写入性恢复，交由用户决定 |
-| `ocr` 命令缺失（`ocr delegate preview/rule` 无法启动） | review 子代理报告缺失并停止，不降级为无规则审查；给出 `npm install -g @alibaba-group/open-code-review` 及 Node ≥14、Git ≥2.41 前置提示 | 记录缺失命令与原始错误；用户批准安装后重新派发同一 fresh reviewer，不沿用旧 verdict |
-| `ocr delegate preview` 失败或输出无法解析为 JSON | 重试一次并核对 `--repo`、`--from/--to/--commit` 与当前 Git 状态；仍失败则报告并停止 | 记录 stderr 与退出码；不得自行猜测文件集替代 preview，不得跳过覆盖率报告 |
-| `ocr delegate rule` 对部分文件未返回规则 | 按内置默认规则继续审查，并在汇总中显式标注未命中规则的文件路径 | 不把“无规则”解释为“无需审查”，文件仍计入 reviewed/skipped 统计 |
-| preview 文件数与 diff 明显不符（含 0 文件） | 核对审查模式与 ref 范围，修正后重跑 preview | 疑似漏审时上报主会话核对，不得静默接受异常覆盖 |
+| `scripts/review_preflight.py` 未运行或无法启动 | review 子代理在 GAPS 中报告并停止：确定性前置（detect/normalize/negative coverage/P0-P3）不可跳过 | 记录原始错误与退出码；不得跳过 preflight 直接给 verdict |
+| `ocr` 命令缺失或 `ocr delegate rule` 失败（optional enrichment） | review 继续：preflight 输出 `ocr.state=skipped` 并附 reason，审查照常按 machine findings/coverage/context 完成，绝不 STOP | 记录 SKIPPED 与 reason；可选给出 `npm install -g @alibaba-group/open-code-review` 及 Node ≥14、Git ≥2.41 提示，不因 ocr 不可用重新派发 reviewer |
+| preflight 的 findings / coverage 与 change facts 明显不符（如 `--facts` 文件缺失或内容过旧） | 核对 `--facts` 路径与 change_facts.py 最新输出，修正后重跑 preflight | 疑似漏审时上报主会话核对，不得静默接受异常覆盖 |
 
 ## 完整反模式清单
 

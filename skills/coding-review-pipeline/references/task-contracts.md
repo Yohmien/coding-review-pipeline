@@ -75,14 +75,11 @@ RESIDUAL RISKS: proceed 后仍需跟踪的风险
 
 fresh reviewer 必须独立于实现过程，只根据规范化任务、工作区中的实际 diff 和主会话验证证据审查最终整体。其行为严格只读：不得修改文件、不得实现或代办修复、不得运行会写入工作区的命令、不得派生其他代理。
 
-reviewer 的第一步是 open-code-review delegate（确定性工程，不调用 LLM）：
+reviewer 的第一步是运行 `scripts/review_preflight.py`（确定性工程，不调用 LLM；口径见 review-routing.md）：
 
-1. 运行 `ocr delegate preview`（按任务给定的 diff 范围带 `--from/--to` 或 `-c/--commit`；仓库非当前目录时加 `--repo <path>`；有业务上下文时加 `-b "context"`；需要排除时加 `--exclude <patterns>`），得到审查文件集、模式与 ref 元数据；输出为文本，被排除文件标注 excluded 原因（如 `unsupported_ext`，.md 等非代码文件不在可审集内）。
-2. 运行 `ocr delegate rule <path...>`（可加 `--rule <path>` 指定项目自定义规则）为文件取规则组；共享规则组的文件合并审查。
-3. 按规则组逐文件审查：range 用 `git diff <merge_base>..<to>`、commit 用 `git show <commit>`、workspace 用 `git diff HEAD`，未跟踪新文件直接读全文；对照规则输出含 path、severity、category、行号的评论。
-4. 全部文件 reviewed 或显式 skipped（附原因）；汇总报告 total_files、reviewed_files、skipped_files、coverage_rate。
-
-`ocr` 未安装或命令失败时，在 `GAPS` 中报告缺失项并停止，不降级为无规则审查。
+1. 以 `--facts <change facts>` 加可选 `--task-facts` / `--verification` 运行 review_preflight.py：detect-and-reuse 可用 analyzer（reuse-before-install，绝不自动安装）、归一化 finding、diff 归因与去重、构建 negative coverage（MACHINE COVERAGE）、打包 P0-P3 review context。
+2. 按 preflight 输出审查：attributable 机器阻断直接采信；clean/skipped/failed/unsupported 清单决定 FOCUS ON 与预算分配；`review_context` 逐级消费。
+3. ocr 是 optional rule enrichment：preflight 检测到 `ocr` 时用 `ocr delegate rule` 生成附加规则上下文（`ocr.rule_context`）；不可用时 preflight 输出 `ocr.state=skipped` 并继续，review 照常完成，绝不 STOP、绝不跳过规则审查。
 
 ```text
 ROLE
@@ -91,11 +88,10 @@ ROLE
 TASK
 - 主会话规范化的目标、验收标准、接口契约、约束与风险边界。
 
-OCR DELEGATE (第一步，先于一切审查)
-- ocr delegate preview：审查文件集、模式与 ref 元数据。
-- ocr delegate rule：每文件的规则组。
-- 共享 flag：`--repo`（仓库根，默认 cwd）、`--from/--to` 或 `-c/--commit`（范围）、`--exclude`（排除模式）、`-b`（业务上下文）、`--rule`（自定义规则）；delegate 输出为文本格式，不支持 `--format`。
-- 按规则组逐文件对照审查；缺失 ocr 时在 GAPS 报告并停止。
+REVIEW PREFLIGHT (第一步，先于一切审查)
+- 运行 `scripts/review_preflight.py --facts <change facts> [--task-facts <path>] [--verification <path>]`。
+- 消费 machine findings、machine_coverage、review_context（P0-P3）。
+- ocr 为 optional rule enrichment：可用时 `ocr.rule_context` 作为附加规则源；不可用输出 `skipped` 并继续，绝不 STOP review。
 
 ACTUAL DIFF
 - 主会话核验后的完整实际 diff 和实际改动文件清单，而非 coder 自报摘要。

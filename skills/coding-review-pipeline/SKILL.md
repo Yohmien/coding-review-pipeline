@@ -36,7 +36,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 
 对用户的首次响应只能承诺当前获准阶段，并满足以下可观察条件：
 
-1. 代码变更请求尚未完成探索与完整计划确认时，只说明将先读取规约、检查工作区、定位证据；复杂计划还须先完成追问，再提交计划。不得推荐或列出任何模型 ID、reasoning_effort，不得请求模型选择，也不得承诺开始编码。
+1. 代码变更请求尚未完成探索与完整计划确认时，只说明将先读取规约、检查工作区、定位证据；G1（见 [references/routing-gates.md](references/routing-gates.md)）命中还须先完成追问，再提交计划。不得推荐或列出任何模型 ID、reasoning_effort，不得请求模型选择，也不得承诺开始编码。
 2. “只读 review”“先 review”或“顺便修一下”等未明确修复项和写入授权的请求，只承诺并执行只读 review；不得预告后续自动修复、模型选择或 coding。报告发现后，等待用户明确选择修复项并授权。
 3. 用户要求复用历史模型或允许自动换模时，先读取当前 live schema。原选择任一项不受支持即 🔴 CHECKPOINT · 🛑 STOP：列出缺失能力并请用户重选；不得接受“自动换一个”的授权作为静默替换依据。
 
@@ -44,78 +44,63 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 
 ## 按需读取
 
+Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契约见 [references/routing-gates.md](references/routing-gates.md)）；只加载输出命中的 reference 与 skill，不复制其规则。
+
 - 在形成任何 coder、advisor 或 reviewer 提示前，读取 [references/task-contracts.md](references/task-contracts.md)。
-- 任务涉及代码或测试验证时，读取 [references/verification-routing.md](references/verification-routing.md)。
-- 工作树已脏、多任务并行、线程中断或发生失败时，读取 [references/recovery-and-failures.md](references/recovery-and-failures.md)。
-- 定位结构、调用关系、数据流或影响面时调用 search-gates，不在本 skill 复制搜索细则。
-- 计划命中下述复杂条件时调用 grill-with-docs；该 skill 会组合 grilling 与 domain-modeling，必须先完成追问门禁再形成完整计划。
-- 编码和 review 应用 ponytail；review 子代理第一步必须执行 open-code-review（ocr delegate），见“Fresh review 与修正循环”。
+- verify/complete 阶段或 completion_claim 命中时，读取 [references/verification-routing.md](references/verification-routing.md)。
+- G5 输出 `required`（incomplete ledger、running agent、dirty baseline、interrupted run、context recovery、unknown mutation 任一成立）时，读取 [references/recovery-and-failures.md](references/recovery-and-failures.md)。
+- 定位结构、调用关系、数据流或影响面时调用 search-gates；CodeGraph 图谱层缺失时由 search-gates 自身降级 rg 锁定，不在本 skill 复制搜索细则。
+- G1 输出 `REQUIRES_USER_DECISION` 时调用 grill-with-docs（该 skill 组合 grilling 与 domain-modeling），先完成追问门禁再形成完整计划；G1 输出 `NONE` 时跳过。
+- 编码和 review 应用 ponytail；review 子代理第一步必须运行 `scripts/review_preflight.py`（detect-and-reuse、归一化、negative coverage、P0-P3 context 打包），见“Fresh review 与修正循环”。
 - 缺陷修复调用 systematic-debugging；可测实现调用 test-driven-development；完成声明前调用 verification-before-completion。只读取适用 skill，不复制其规则。
 
 ## 依赖与前置
 
-本 skill 编排其他 skill，不复制其细则。依赖缺失时报告缺失项并停止对应流程，不静默降级、不找替代品硬顶。
+本 skill 编排其他 skill，不复制其细则。依赖按 CORE / CONDITIONAL / OPTIONAL 三档处理：CORE 缺失立即报告并停止；CONDITIONAL 在 Gate/阶段命中条件时缺失，报告并停止对应流程；OPTIONAL 缺失不阻断。任何档位都不静默降级、不找替代品硬顶。
 
-### 必需依赖（缺一不可）
+### CORE（任何编码任务必需）
 
-| skill | 来源 | 加载时机 |
+| skill / 组件 | 来源 | 说明 |
 |---|---|---|
-| `grill-with-docs` | mattpocock/skills（`skills/engineering/grill-with-docs`） | 复杂计划命中追问门禁时 |
-| `search-gates` | 随本仓库开源（`vendor/skills/search-gates`） | 结构、调用、数据流或影响面定位 |
+| `search-gates` | 随本仓库开源（`vendor/skills/search-gates`） | 结构、调用、数据流或影响面定位；图谱层缺失时自身降级 rg 锁定 |
 | `verification-before-completion` | obra/superpowers（或等价 curated 来源） | 任何完成、通过、修复声明前 |
-| `ponytail` | DietrichGebert/ponytail | 编码与 review 阶段 |
-| `systematic-debugging` | obra/superpowers（或等价 curated 来源） | 缺陷修复 |
+| `ponytail` | DietrichGebert/ponytail | 编码与 review 阶段的最简可行解纪律 |
+| 内置引用（非 skill） | 随本 skill 分发 | `references/` 全部文件 + `scripts/` 全部脚本；任一缺失按 recovery-and-failures.md 失败路径处理，不继续派发 |
+| `contract-executor`（兄弟 skill） | 随本仓库分发（`skills/contract-executor`） | coding 子代理的机械执行状态机；必须与本 skill 同步安装，缺失时 fail closed，不派 coding 子代理 |
+
+### CONDITIONAL（按 Gate/阶段命中加载）
+
+| skill / 引用 | 来源 | 命中条件 |
+|---|---|---|
+| `grill-with-docs`（传递 `grilling`、`domain-modeling`） | mattpocock/skills（`skills/engineering/grill-with-docs`） | 仅 G1 输出 `REQUIRES_USER_DECISION`；传递依赖任一缺失使追问门禁失效，按 CORE 缺失处理 |
+| `systematic-debugging` | obra/superpowers（或等价 curated 来源） | 缺陷修复且 root cause 未建立 |
 | `test-driven-development` | obra/superpowers（或等价 curated 来源） | 可测实现 |
+| `references/recovery-and-failures.md` | 内置引用（文件本身属 CORE 分发清单） | 仅 G5 输出 `required` 时加载 |
 
-### 工具级前置依赖
+### OPTIONAL（增强，可缺失）
 
-- `open-code-review`（`ocr` CLI，delegate 模式）：review 子代理第一步的确定性工程来源（文件筛选与规则解析）。来源 [alibaba/open-code-review](https://github.com/alibaba/open-code-review)；安装 `npm install -g @alibaba-group/open-code-review`（需 Node ≥14；要求 Git ≥2.41）。delegate 模式不需要配置 LLM。缺失或命令失败时，review 子代理按 recovery-and-failures.md 报告并停止，不降级为无规则审查。
-
-### 传递依赖
-
-- `grill-with-docs` 内部使用 `grilling`（决策树、分轮追问）与 `domain-modeling`（glossary/ADR）。本 skill 不直接调用，但任一缺失会使追问门禁失效，按必需依赖缺失处理。
+- `open-code-review`（`ocr` CLI）：optional rule enrichment。来源 [alibaba/open-code-review](https://github.com/alibaba/open-code-review)；安装 `npm install -g @alibaba-group/open-code-review`（需 Node ≥14；要求 Git ≥2.41）。`review_preflight.py` 检测到 `ocr` 时用 `ocr delegate rule` 生成附加规则上下文；不可用输出 `skipped` 并继续，绝不 STOP review。
+- CodeGraph 图谱索引：search-gates 的图谱层。缺失时 search-gates 按自身兜底表降级 rg 锁定（显式路径）或报告缺失，不假装命中。
 
 ### 安装与验证
 
 - 安装到 `$CODEX_HOME/skills`（默认 `~/.codex/skills`），目录名必须等于 frontmatter `name`。
-- 各依赖的权威来源与安装命令见开源仓库 README 的依赖表；本机可用 `skill-installer` 按 GitHub 目录 URL 安装。
-- 验证：目录存在、frontmatter `name` 与目录名一致、`references/` 三文件完整、`quick_validate.py` 输出 `Skill is valid!`。
-
-### 内置引用（非 skill，随本 skill 分发）
-
-- `references/task-contracts.md`、`references/verification-routing.md`、`references/recovery-and-failures.md` 随本 skill 复制；任一缺失按 recovery-and-failures.md 的失败路径处理，不继续派发。
+- 各依赖的权威来源与安装命令见开源仓库 README 的三分类依赖表；本机可用 `skill-installer` 按 GitHub 目录 URL 安装。
+- 验证：目录存在、frontmatter `name` 与目录名一致、`references/` 全部文件与 `scripts/` 全部脚本完整、兄弟 skill `contract-executor` 已同步安装（缺失 fail closed）、`python scripts/validate.py skills/coding-review-pipeline skills/contract-executor` 全部输出 `Skill is valid!`。
 
 ## 核心状态机
 
 ### 1. 探索与定案
 
-1. 检查 AGENTS.md、git status --short 和用户已有改动。
+1. 用 `scripts/change_facts.py` 收集 change facts，并检查 AGENTS.md、git status --short 和用户已有改动。
 2. 按 search-gates 获取足够上下文；目标在配置或测试文件时再精确读取源码。
 3. 缺陷先复现并形成根因证据，禁止猜测式修改。
 4. 主会话定案接口、数据契约、边界、异常、事务、并发、幂等、超时、重试和补偿。
 5. 判定风险等级与任务依赖，列出允许修改的文件集合。
 
-### 1.5 复杂计划追问门禁
+### 1.5 G1 追问门禁（one-hop）
 
-满足任一条件即为复杂计划：
-
-- 多模块、跨边界或包含两个以上有依赖关系的实施任务。
-- 公共 API、数据库或迁移、事务、并发、安全、外部副作用或宽影响重构。
-- 接口、数据契约、领域边界、兼容策略或失败处理仍有会实质改变方案的未决选择。
-- 用户目标存在会影响范围、验收或边缘场景的关键歧义，不能由仓库事实直接消除。
-
-命中后，在探索证据足够且输出完整计划前调用 grill-with-docs：
-
-1. 按 grilling 建立决策树，区分可查事实与需用户决定的选择；事实由主会话通过环境和工具查明，不转问用户。
-2. 按当前 frontier 分轮追问，每个问题给出推荐答案；依赖未决问题的分支留到后续轮次，不静默假设。
-3. 当前环境提供 `request_user_input`，且本轮问题可表达为该工具支持的互斥选项时，必须使用该工具。按 live schema 的单次问题数和选项数上限组装问题，推荐项置顶并明确标记 `(Recommended)`。
-4. frontier 超过 `request_user_input` 单次容量时，按依赖与优先级拆成多轮；收到本轮回答并更新决策树后再询问下一轮。不得把溢出问题附在工具调用前后的普通文本中，也不得为减少调用而改成整批文本提问。
-5. 只有开放式回答、多选、参数填写、无法形成互斥选项，或当前环境确实没有 `request_user_input` 时，才使用简洁文本提问；回退时说明不适用结构化输入的原因。
-6. 按 domain-modeling 核对现有 `CONTEXT.md` / `CONTEXT-MAP.md`；术语一旦定案即按需更新 glossary。只有同时满足难逆转、缺背景会意外、存在真实权衡时才按需新增 ADR。
-7. 追问期间可展示决策树和已定案结论，但不得提前输出完整实施计划，也不得用计划草案替代用户决策。
-8. 只有 frontier 为空且用户确认已达成共同理解，才进入“完整计划确认”。
-
-未命中复杂条件时跳过 grill-with-docs，直接根据探索证据形成完整计划。复杂度不得仅按预计代码行数判断。
+是否追问由 `scripts/route_context.py` 的 G1 User Decision Gate 决定，可读契约见 [references/routing-gates.md](references/routing-gates.md)：只有输出 `REQUIRES_USER_DECISION` 才路由 grill-with-docs（tools 附带 request_user_input）；多文件、多模块、CodeGraph、rg、工具/测试/阅读数量等一律不是 G1 触发条件。命中后按 grill-with-docs（及传递的 grilling / domain-modeling）执行追问，细节不复制到本 skill；G1 输出 `NONE` 时跳过，直接根据探索证据形成完整计划。
 
 ### 2. 完整计划确认
 
@@ -145,11 +130,14 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 ### 4. 生成任务契约
 
 1. 按 task-contracts.md 生成五段 coder packet：目标、文件所有权、接口、约束、验证。
-2. 规格定案所有影响接口、契约、安全和范围的判断；允许 coder 处理局部低风险实现判断，但必须在返回中报告。
-3. 每个任务声明可写集和必要只读依赖；禁止转发主会话完整对话或其他子代理 raw 对话。
-4. 单文件单点任务保持单任务，不为并行而过度拆分。
+2. 派发前用 `scripts/validate_task_packet.py` 校验 packet；输出 BLOCKED 时按 evidence 修正，不得绕过派发。
+3. 规格定案所有影响接口、契约、安全和范围的判断；允许 coder 处理局部低风险实现判断，但必须在返回中报告。
+4. 每个任务声明可写集和必要只读依赖；禁止转发主会话完整对话或其他子代理 raw 对话。
+5. 单文件单点任务保持单任务，不为并行而过度拆分；拆分与并行可行性以 task_graph.py 的 CAN 输出为准。
 
 ### 5. 风险路由与实施
+
+风险等级取 route_context.py 的 G2 输出（NORMAL / ELEVATED / HIGH），并行模式取 G4 输出（single / serial / parallel-safe）；生命周期动作只允许 agent-lifecycle.md 的固定 8 actions，收敛路由只允许 task-convergence.md 的固定 7 routes。
 
 | 等级 | 条件 | 流程 |
 |---|---|---|
@@ -170,14 +158,11 @@ advisor 只给 proceed | change | stop，不能替主会话决策。coder 只修
 
 ### 7. Fresh review 与修正循环
 
-reviewer 必须使用独立、上下文干净的线程，行为只读，并按 task-contracts.md 返回。派发后第一步必须执行 open-code-review delegate：
+reviewer 必须使用独立、上下文干净的线程，行为只读，并按 task-contracts.md 返回。派发后第一步必须运行 `scripts/review_preflight.py`（确定性前置，不调用 LLM；完整口径见 [references/review-routing.md](references/review-routing.md)）：
 
-1. `ocr delegate preview` 确定审查文件集、模式（workspace / range / commit）与 ref 元数据；按主会话给定的 diff 范围带 `--from/--to` 或 `-c/--commit`。输出为文本清单，被排除文件标注 excluded 原因（如 `unsupported_ext`，.md 等非代码文件不在可审集内，不计入覆盖率）。
-2. `ocr delegate rule <path...>` 按文件取规则组；共享同一规则组的文件合并审查，避免重复读取。
-3. 按规则组逐文件审查：range 模式用 `git diff <merge_base>..<to>`、commit 模式用 `git show <commit>`、workspace 模式用 `git diff HEAD`（未跟踪新文件直接读全文），再对照规则审查，输出含 path、severity、category 与行号的评论。
-4. preview 可审集内的文件必须全部 reviewed 或显式 skipped（附原因），汇总给出 total_files、reviewed_files、skipped_files、coverage_rate，按严重度分组报告；被 preview 排除的文件不强制补审。
-
-`ocr` 未安装或命令失败时，按 recovery-and-failures.md 的 if-then 表报告缺失并停止，不静默降级、不跳过规则审查。
+1. 以 `--facts <change facts>` 加可选 `--task-facts` / `--verification` 运行 review_preflight.py：detect-and-reuse 可用 analyzer、归一化 finding、diff 归因与去重、构建 negative coverage、打包 P0-P3 review context。
+2. 消费 preflight 输出审查：attributable 的机器阻断（new secret、known vulnerable dependency、verification exit_code != 0、project-configured analyzer hard failure）直接采信；MACHINE COVERAGE 的 clean/skipped/failed/unsupported 决定 FOCUS ON 与预算分配；`review_context` 按 P0-P3 逐级消费，不在一启动就搜全仓。
+3. ocr 只是 optional rule enrichment：preflight 检测到 `ocr` 时，`ocr.rule_context` 作为附加规则源参考；不可用时 preflight 输出 `ocr.state=skipped` 并继续，review 照常按第 1-2 步完成，绝不 STOP、绝不跳过规则审查。
 
 审查结论按 task-contracts.md 返回：
 
@@ -198,7 +183,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 
 ## 完成条件
 
-只有同时满足以下条件才可声明完成：
+只有同时满足以下条件才可声明完成（确定性检查以 `scripts/completion_gate.py` 输出为准，`COMPLETE_ALLOWED` 才放行）：
 
 1. 全部任务获得当前 diff 对应的 fresh ship。
 2. 主会话确认最终实际改动文件均在范围内，并标注在原有脏文件上继续的修改。
@@ -215,6 +200,6 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - 信任 worker 自报而不检查实际 diff 和重跑验证。
 - 并行修改重叠文件，或把 raw 子代理对话转给其他代理。
 - reviewer 自行修复，或修复后继续沿用旧 verdict。
-- review 子代理跳过 open-code-review delegate 第一步（preview/rule），或无规则审查仍给出 verdict。
+- review 子代理跳过 review_preflight.py 确定性前置（detect/normalize/negative coverage/P0-P3），或无证据审查仍给出 verdict。
 - 未检查工作区就重复派发，或使用破坏性回滚覆盖用户改动。
 - 无最新命令证据声称通过，或误删正式/回归测试。
