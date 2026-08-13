@@ -201,6 +201,8 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 
 ## 完成条件
 
+🔴 CHECKPOINT · 🛑 STOP：`scripts/completion_gate.py` 未输出 `COMPLETE_ALLOWED` 不得声明完成、不得使用完成措辞；输出 `BLOCKED` 时按 reasons 逐项闭环。
+
 只有同时满足以下条件才可声明完成（确定性检查以 `scripts/completion_gate.py` 输出为准，`COMPLETE_ALLOWED` 才放行）：
 
 1. 全部任务获得当前 diff 对应的 fresh ship。
