@@ -19,7 +19,7 @@
 
 1. **计划与用户目标错位**——agent 不知道用户真正要什么就开干。修复：G1 User Decision Gate 判定是否追问，仅输出 `REQUIRES_USER_DECISION` 时路由 `grill-with-docs` 先问清全部细节再输出完整计划。
 2. **术语与领域语言漂移**——20 个词能讲清的用了 200 个，代码命名与领域脱节。修复：`domain-modeling` 随 `grill-with-docs` 传递加载，同步维护 `CONTEXT.md` glossary 与 ADR。
-3. **搜索与影响面靠猜**——跨模块改动没有证据支撑。修复：`search-gates` 固定「图谱 → 记忆 → rg → 子代理展开」的搜索闸门；CodeGraph 图谱层缺失时降级 rg 锁定。
+3. **搜索与影响面靠猜**——跨模块改动没有证据支撑。修复：`search-gates` 固定「图谱 → 记忆 → rg 锁定 → 展开补全」四层搜索闸门；CodeGraph 图谱层缺失时按失败兜底表降级 rg 锁定（显式路径）或报告缺失，不假装命中。
 4. **跳过验证就声称完成**——把「我觉得通过了」当证据。修复：`verification-before-completion` 强制最新命令证据。
 5. **过度工程**——为不存在的问题做抽象。修复：`ponytail` 在编码与 review 阶段强制最简可行解。
 6. **缺陷乱猜修复**——症状修复掩盖根因。修复：`systematic-debugging` 强制复现-根因-假设-验证闭环。
