@@ -166,6 +166,8 @@ advisor 只给 proceed | change | stop，不能替主会话决策。coder 只修
 每轮 coder 返回后，主会话必须：
 
 1. 检查 git status --short、完整 diff、未跟踪文件和允许范围。
+   存在未跟踪新文件时，先对每个新文件执行 `git add -N <file>`（intent-to-add，仅让 diff 可见）
+   再运行 `git diff --check`；不得因此顺手 `git add` 提交。
 2. 发现范围外变化立即停止，不静默归入任务。
 3. 按 verification-routing.md 重跑适用命令并读取完整输出、退出码和失败数。
 4. 将实际 diff 和主会话证据提供给 fresh reviewer；不以 coder 摘要代替。

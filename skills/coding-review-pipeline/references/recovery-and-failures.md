@@ -66,6 +66,7 @@
 逐任务 review 和集成 review 分别独立计轮。一次“发现 → coder 修正 → 重新 review”计一轮，轮次与发现、实际文件、验证证据绑定。第 1 至 3 轮允许继续；第 3 轮仍未批准即停止该闭环，汇总每轮未收敛点、重复失败证据和当前工作区状态，上报主会话或用户。不得以换线程、改写措辞或拆分同一问题清零计数。
 
 `fix-first` 适用于规格正确、根因充分且发现可在原边界内机械修复；`rethink` 适用于接口或算法判断错误、根因不足、发现跨越原任务边界，或同类缺陷重复出现。进入 `rethink` 后先由主会话修正规格与依赖图，再决定是否开启下一轮。
+同族缺陷 >=2 处同样视为 rethink 触发，不得以第三次 fix-first 单点补丁延续。
 
 ## If-Then 失败表
 
@@ -84,6 +85,8 @@
 | `scripts/review_preflight.py` 未运行或无法启动 | review 子代理在 GAPS 中报告并停止：确定性前置（detect/normalize/negative coverage/P0-P3）不可跳过 | 记录原始错误与退出码；不得跳过 preflight 直接给 verdict |
 | `ocr` 命令缺失或 `ocr delegate rule` 失败（optional enrichment） | review 继续：preflight 输出 `ocr.state=skipped` 并附 reason，审查照常按 machine findings/coverage/context 完成，绝不 STOP | 记录 SKIPPED 与 reason；可选给出 `npm install -g @alibaba-group/open-code-review` 及 Node ≥14、Git ≥2.41 提示，不因 ocr 不可用重新派发 reviewer |
 | preflight 的 findings / coverage 与 change facts 明显不符（如 `--facts` 文件缺失或内容过旧） | 核对 `--facts` 路径与 change_facts.py 最新输出，修正后重跑 preflight | 疑似漏审时上报主会话核对，不得静默接受异常覆盖 |
+| run_ledger 写入被沙箱拒绝（默认写 `.git/coding-review-pipeline/runs/`，workspace-write 沙箱对 `.git` 只读） | 申请仅限该路径的最小升级；禁止 danger 模式、禁止改项目文件或 `.gitignore` 绕过 | 升级不可用时把完成证据落会话制品目录，并如实报告未完成项；不得把未落盘当已持久化 |
+| 验证命令与写台账 / 状态命令混在同批并行工具调用中被中断 | 单独重跑该验证命令并重读完整输出、退出码与失败数 | 不合并同批其他结果判定，不以部分输出代替完整证据 |
 
 ## 完整反模式清单
 

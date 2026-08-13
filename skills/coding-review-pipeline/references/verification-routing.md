@@ -46,3 +46,16 @@
 对每项改动归入一档并记录依据：**可测**（新增/更新测试并保留红绿证据）、**客观不可测**（说明阻断事实与替代检查）、**用户批准豁免**（记录批准范围，不写成验证通过）。
 
 红绿证据以目标行为缺失导致的失败为准，不得用语法/依赖/环境错误充当红态；实现前无法保留自然红态时使用五步红变体并确认 diff 不含临时变体。
+
+## 未跟踪文件
+
+- 指纹与验证记录必须覆盖未跟踪新文件路径：`change_facts.py` 输出的 `untracked_files` 为路径
+  字符串列表；`diff_fingerprint` 覆盖 `changed_files / untracked_files / diff_ranges`。change_facts
+  的工作树快照内部会对 untracked 计算路径 + 内容 SHA-256，但仅用于快照指纹、不作为独立输出字段；
+  未跟踪新文件的内容级核验由 `git add -N` 后的 diff 与主会话实际读取提供，不得仅按已跟踪 diff
+  判断新鲜度。
+- `git diff --check` 不覆盖未跟踪文件：存在 untracked 新文件时，先对每个新文件执行
+  `git add -N <file>`（intent-to-add，仅让 diff 可见）再运行检查；不得因此顺手 `git add` 提交。
+- `diff_fingerprint` 必须基于含 `untracked_files` 的最新 change facts（字段覆盖
+  `changed_files / untracked_files / diff_ranges`）；任何验证记录 / verdict 不得绑定
+  不含 untracked 的旧指纹。

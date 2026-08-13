@@ -7,6 +7,8 @@
 - Git 仓库：`git rev-parse --git-path coding-review-pipeline/runs/<run-id>/ledger.json`（落在 `.git` 元数据区内，绝不污染 `git status`）。
 - NON_GIT：`$CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs/<run-id>/ledger.json`；`workspace-id` 是工作区绝对路径的 SHA-256（跨会话稳定）。不使用 `TEMP`。
 
+Git 仓库路径落在 `.git` 元数据区：workspace-write 沙箱对 `.git` 只读，写入 ledger 需申请仅限该路径的最小升级；`--codex-home` 只影响 NON_GIT 路径。
+
 同一仓库存在多个 run 时，用 `list` 子命令列出 `run_id / plan_summary / created_at / base / stage`，由用户决定恢复哪一个，禁止程序猜测。
 
 ## Run ID 规则
@@ -25,6 +27,8 @@
 - `plan`：原始计划对象；`baseline.plan_fingerprint` 保存其指纹，`baseline.created_at/base/stage` 供恢复展示。
 - `decisions`：决策注册表（`id/domain/owner/status/value/evidence/affects`）；`owner` 只允许 `user/main/advisor`，coder 不能成为高影响 decision owner。
 - `events`：追加式事件流（每次写追加，不覆盖）。
+- `integration`：字符串标量记录段，写入按 key 字段级合并到既有 object；供 completion_gate 读取顶层
+  `latest_verdict` 与 `verdict_diff_fingerprint`。既有 ledger 无需迁移，`integration={}` 天然合法。
 
 ## Task Ledger
 
@@ -71,7 +75,12 @@
 `update --changes <json>` 先合并、再整体校验、最后落盘：
 
 - 硬违规（合并后 ledger 结构不合法，如 `tasks`/`agents`/`decisions`/`integration` 非 object、`events` 非 list、plan 形状非法）→ `invalid_input`（exit 2），不落盘。
-- 写入 section 软违规（changes 写入 `tasks`/`agents`/`decisions`/`integration` 的条目中包含非 dict 值）→ `invalid_input`（exit 2），不落盘；未写入的 section 携带的既有软违规不阻塞 update。
+- integration 写入门禁：本次 update 写入 `integration` 的值必须是字符串，任何 dict / list / number / null
+  值 → `invalid_input`（exit 2），不落盘（`_validate_integration_write`）。
+- `tasks`/`agents`/`decisions` 软违规：本次 changes 写入这些 section 的条目中包含非 dict 值 →
+  `invalid_input`（exit 2），不落盘；未写入的 section 携带的既有软违规不阻塞 update。
+- 读路径（load / list / resume）容忍既有 ledger 中的遗留非标量 integration 值，不因 integration 条目类型
+  拒绝读取；顶层 integration 仍必须是 object。
 
 ## 畸形可解析 Ledger 逐命令映射
 

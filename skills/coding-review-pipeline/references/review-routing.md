@@ -71,6 +71,17 @@ Sonar 全部有检测条目。PMD / Checkstyle 的 CLI 需要项目专属 rulese
 build-integrated、reuse via CI/report not implemented，使 negative coverage 如实呈现。均只
 复用已有配置，不自动安装。
 
+## 语义同构与同族矩阵扫描（reviewer 必查）
+
+新入口或新接口的校验与状态门槛必须与既有权威语义源逐条同构。权威语义源指既有 policy / service
+中已定案的状态机、状态门槛或校验实现（写明具体类名与方法），不是新代码自带的更严副本。reviewer
+发现新入口的校验或状态门槛与权威语义源不一致、或比权威语义更严时，禁止复制更严状态表：
+
+1. 与既有权威语义源逐条对照，给出同构或差异结论。
+2. 发现一处此类缺口，必须对同类「事件类型 × 状态组合」矩阵扫描并一次列全，不得只报单点。
+3. 同族缺口 >=2 处时，verdict 必须是 rethink：该族语义需要主会话重新定案，不得以单点
+   fix-first 补丁延续。
+
 ## 统一 Finding Schema
 
 ```json
