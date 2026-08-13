@@ -85,7 +85,7 @@
 | `scripts/review_preflight.py` 未运行或无法启动 | review 子代理在 GAPS 中报告并停止：确定性前置（detect/normalize/negative coverage/P0-P3）不可跳过 | 记录原始错误与退出码；不得跳过 preflight 直接给 verdict |
 | `ocr` 命令缺失或 `ocr delegate rule` 失败（optional enrichment） | review 继续：preflight 输出 `ocr.state=skipped` 并附 reason，审查照常按 machine findings/coverage/context 完成，绝不 STOP | 记录 SKIPPED 与 reason；可选给出 `npm install -g @alibaba-group/open-code-review` 及 Node ≥14、Git ≥2.41 提示，不因 ocr 不可用重新派发 reviewer |
 | preflight 的 findings / coverage 与 change facts 明显不符（如 `--facts` 文件缺失或内容过旧） | 核对 `--facts` 路径与 change_facts.py 最新输出，修正后重跑 preflight | 疑似漏审时上报主会话核对，不得静默接受异常覆盖 |
-| run_ledger 写入被沙箱拒绝（默认写 `.git/coding-review-pipeline/runs/`，workspace-write 沙箱对 `.git` 只读） | 申请仅限该路径的最小升级；禁止 danger 模式、禁止改项目文件或 `.gitignore` 绕过 | 升级不可用时把完成证据落会话制品目录，并如实报告未完成项；不得把未落盘当已持久化 |
+| run_ledger 写入被沙箱拒绝（默认写 `$CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs/`，workspace-write 沙箱对该路径只读） | 申请仅限该全局状态目录的最小升级；禁止 danger 模式、禁止改项目文件或 `.gitignore` 绕过 | 升级不可用时把完成证据落会话制品目录，并如实报告未完成项；不得把未落盘当已持久化 |
 | 验证命令与写台账 / 状态命令混在同批并行工具调用中被中断 | 单独重跑该验证命令并重读完整输出、退出码与失败数 | 不合并同批其他结果判定，不以部分输出代替完整证据 |
 
 ## 完整反模式清单

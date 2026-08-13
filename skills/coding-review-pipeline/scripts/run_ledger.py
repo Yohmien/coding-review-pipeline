@@ -3,11 +3,12 @@
 """Phase 9-10 Persistent Run Ledger + Verification Router.
 
 Deterministic JSON persistence for a coding-review-pipeline run and a
-programmatic verification-tier router. The ledger is stored in the git
-metadata area (``git rev-parse --git-path``) or, for NON_GIT workspaces, under
-``$CODEX_HOME/state/coding-review-pipeline/<workspace-id>/`` (never TEMP).
-Writes are atomic (temp + flush + os.replace via ``crp_common``) so a failed
-write always leaves the previous ledger valid.
+programmatic verification-tier router. The ledger is stored under the global
+state directory ``$CODEX_HOME/state/coding-review-pipeline/<workspace-id>/``
+(never TEMP) for git and NON_GIT workspaces alike; ``migrate`` moves legacy
+``.git``-embedded ledgers into that location. Writes are atomic (temp + flush
+os.replace via ``crp_common``) so a failed write always leaves the previous
+ledger valid.
 
 Machine-readable UTF-8 JSON on stdout; structured errors on stderr. Exit
 codes follow ``crp_common``: 0 ok / 2 invalid_input / 3 policy_blocked /
@@ -109,18 +110,6 @@ def _validate_run_id(run_id: object) -> None:
         )
 
 
-def _git_toplevel(start: Path) -> Path | None:
-    """Return the repository top-level, or None when not inside a git repo."""
-
-    try:
-        proc = crp_common.run_git(["rev-parse", "--show-toplevel"], cwd=str(start))
-    except CrpError:
-        return None
-    if proc.returncode != 0:
-        return None
-    return Path(proc.stdout.strip()).resolve()
-
-
 def _codex_home(codex_home: str | Path | None) -> Path:
     if codex_home is not None:
         return Path(codex_home).expanduser()
@@ -130,6 +119,36 @@ def _codex_home(codex_home: str | Path | None) -> Path:
     return Path.home() / ".codex"
 
 
+def _legacy_runs_dir(start: Path) -> Path | None:
+    """Legacy runs location inside the git metadata area, or None.
+
+    Migration detection only: ``git rev-parse --git-path
+    coding-review-pipeline/runs`` fails (not a git repo, or the path cannot
+    be resolved) → None → ``migrate`` treats the invocation as no-op. Never
+    raises; ``runs_dir`` itself no longer depends on git availability.
+    """
+
+    try:
+        top_proc = crp_common.run_git(
+            ["rev-parse", "--show-toplevel"], cwd=str(start)
+        )
+    except CrpError:
+        return None
+    if top_proc.returncode != 0:
+        return None
+    top = Path(top_proc.stdout.strip()).resolve()
+    try:
+        proc = crp_common.run_git(
+            ["rev-parse", "--git-path", "coding-review-pipeline/runs"],
+            cwd=str(top),
+        )
+    except CrpError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return (top / proc.stdout.strip()).resolve()
+
+
 def workspace_id(path: str | Path) -> str:
     """Stable NON_GIT workspace identifier (deterministic across sessions)."""
 
@@ -137,22 +156,15 @@ def workspace_id(path: str | Path) -> str:
 
 
 def runs_dir(start: str | Path | None = None, codex_home: str | Path | None = None) -> Path:
-    """Directory that contains one ``<run-id>/ledger.json`` per run."""
+    """Directory that contains one ``<run-id>/ledger.json`` per run.
+
+    Single global location for git and NON_GIT workspaces alike:
+    ``$CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs``.
+    ``workspace_id`` is a stable SHA-256 of the resolved start path;
+    ``codex_home`` overrides the location in both scenarios.
+    """
 
     start_path = Path(start).resolve() if start is not None else Path.cwd().resolve()
-    top = _git_toplevel(start_path)
-    if top is not None:
-        proc = crp_common.run_git(
-            ["rev-parse", "--git-path", "coding-review-pipeline/runs"],
-            cwd=str(top),
-        )
-        if proc.returncode != 0:
-            raise CrpError(
-                "internal_error",
-                "git rev-parse --git-path failed",
-                git_error=proc.stderr.strip(),
-            )
-        return (top / proc.stdout.strip()).resolve()
     home = _codex_home(codex_home)
     return home / "state" / "coding-review-pipeline" / workspace_id(start_path) / "runs"
 
@@ -729,6 +741,82 @@ def list_runs(start: str | Path | None = None, codex_home: str | Path | None = N
     return runs
 
 
+def migrate_runs(
+    start: str | Path | None = None,
+    codex_home: str | Path | None = None,
+) -> dict:
+    """Migrate legacy .git-embedded ledgers into the global runs directory.
+
+    For each legacy ``<run-id>/ledger.json``: a global target that already
+    exists is skipped (idempotent); a ledger that fails the full shape
+    predicates is recorded as corrupt and not migrated; otherwise the ledger
+    is written to the global path atomically with an appended
+    ``kind=migration`` event (note carries the source path and time). Legacy
+    sources are never deleted. Success, no-op, skip, and corrupt outcomes
+    all report ``ok: true`` (exit 0); corrupt is a report marker consistent
+    with ``list``'s corrupt entries.
+    """
+
+    start_path = Path(start).resolve() if start is not None else Path.cwd().resolve()
+    result: dict = {
+        "ok": True,
+        "migrated": [],
+        "skipped": [],
+        "corrupt": [],
+        "noop": True,
+    }
+    legacy = _legacy_runs_dir(start_path)
+    if legacy is None or not legacy.is_dir():
+        return result
+    global_runs = runs_dir(start=start_path, codex_home=codex_home)
+    for child in sorted(legacy.iterdir()):
+        if not child.is_dir():
+            continue
+        ledger_file = child / "ledger.json"
+        if not ledger_file.is_file():
+            continue
+        run_id = child.name
+        try:
+            _validate_run_id(run_id)
+        except CrpError as error:
+            result["corrupt"].append(
+                {
+                    "run_id": run_id,
+                    "error": error.message,
+                    "error_code": error.code,
+                }
+            )
+            continue
+        target = global_runs / run_id / "ledger.json"
+        if target.exists():
+            result["skipped"].append(run_id)
+            continue
+        try:
+            ledger = _load_ledger_file(ledger_file)
+            _validate_ledger(ledger, run_id)
+        except CrpError as error:
+            result["corrupt"].append(
+                {
+                    "run_id": run_id,
+                    "error": error.message,
+                    "error_code": error.code,
+                }
+            )
+            continue
+        events = list(ledger.get("events") or [])
+        events.append(
+            {
+                "kind": "migration",
+                "note": f"migrated from {ledger_file} at {crp_common.utc_timestamp()}",
+            }
+        )
+        ledger["events"] = events
+        crp_common.atomic_json_write(target, ledger)
+        result["migrated"].append(run_id)
+        result["noop"] = False
+    return result
+
+
 def _load_json_arg(path: str, label: str):
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -784,6 +872,12 @@ def main(argv: list[str] | None = None) -> int:
     list_p.add_argument("--repo", default=None)
     list_p.add_argument("--codex-home", default=None)
 
+    migrate_p = subparsers.add_parser(
+        "migrate", help="migrate legacy .git-embedded ledgers to the global state directory"
+    )
+    migrate_p.add_argument("--repo", default=None)
+    migrate_p.add_argument("--codex-home", default=None)
+
     resume_p = subparsers.add_parser("resume", help="compute resume state")
     resume_p.add_argument("--run-id", required=True)
     resume_p.add_argument("--repo", default=None)
@@ -826,6 +920,8 @@ def main(argv: list[str] | None = None) -> int:
             output = load_ledger(args.run_id, start=args.repo, codex_home=args.codex_home)
         elif args.command == "list":
             output = {"runs": list_runs(start=args.repo, codex_home=args.codex_home)}
+        elif args.command == "migrate":
+            output = migrate_runs(start=args.repo, codex_home=args.codex_home)
         elif args.command == "resume":
             plan = _load_json_arg(args.plan, "plan") if args.plan else None
             output = resume_state(

@@ -9,13 +9,16 @@ plan mismatch, NON_GIT. Plus the Verification Router tier decision
 (execution plan section 70).
 
 All repository-backed tests use a temporary git repository; the real
-repository is never touched. NON_GIT tests use a temporary directory and a
-temporary CODEX_HOME (never TEMP).
+repository is never touched. A module-level temporary CODEX_HOME isolates
+every runs_dir/ledger_path call from the real user directory; NON_GIT tests
+additionally pass an explicit temporary codex_home (never TEMP).
 """
 
 import contextlib
 import io
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,6 +33,24 @@ sys.path.insert(0, str(SCRIPTS))
 import crp_common  # noqa: E402
 import run_ledger  # noqa: E402
 import completion_gate  # noqa: E402
+
+
+_TEST_CODEX_HOME: Path | None = None
+
+
+def setUpModule() -> None:
+    """Isolate every ledger write behind a temporary CODEX_HOME."""
+
+    global _TEST_CODEX_HOME
+    _TEST_CODEX_HOME = Path(tempfile.mkdtemp(prefix="crp-ledger-home-"))
+    os.environ["CODEX_HOME"] = str(_TEST_CODEX_HOME)
+
+
+def tearDownModule() -> None:
+    global _TEST_CODEX_HOME
+    if _TEST_CODEX_HOME is not None:
+        shutil.rmtree(_TEST_CODEX_HOME, ignore_errors=True)
+        _TEST_CODEX_HOME = None
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -341,7 +362,10 @@ class TestLedgerPersistence(unittest.TestCase):
         )
         status = _git(repo, "status", "--porcelain=v1")
         self.assertEqual(status.stdout.strip(), "")
-        self.assertIn(".git", str(run_ledger.ledger_path("r1", start=repo)).replace("\\", "/"))
+        path_str = str(run_ledger.ledger_path("r1", start=repo)).replace("\\", "/")
+        self.assertTrue(path_str.startswith(str(_TEST_CODEX_HOME).replace("\\", "/") + "/"))
+        self.assertIn("/state/coding-review-pipeline/", path_str)
+        self.assertTrue(path_str.endswith("/runs/r1/ledger.json"))
 
     def test_colon_run_id_rejected_and_creates_no_file(self):
         repo = make_repo({"README.md": "r\n"})
@@ -949,6 +973,198 @@ class TestNonGit(unittest.TestCase):
             import shutil
 
             shutil.rmtree(workspace, ignore_errors=True)
+
+
+class TestMigrate(unittest.TestCase):
+    """run_ledger migrate: legacy .git-embedded ledgers -> global state dir."""
+
+    def _legacy_dir(self, repo):
+        return repo / ".git" / "coding-review-pipeline" / "runs"
+
+    def _write_legacy(self, repo, run_id, plan=None):
+        legacy = self._legacy_dir(repo) / run_id
+        legacy.mkdir(parents=True, exist_ok=True)
+        ledger = run_ledger.new_ledger(run_id, str(repo), plan=plan or _plan())
+        (legacy / "ledger.json").write_text(
+            crp_common.stable_json(ledger), encoding="utf-8"
+        )
+        return legacy / "ledger.json"
+
+    def _run_cli(self, repo, *args):
+        return subprocess.run(
+            [sys.executable, str(SCRIPTS / "run_ledger.py"), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+
+    def test_migrate_moves_legacy_to_global_appends_event_keeps_source(self):
+        repo = make_repo({"README.md": "r\n"})
+        legacy_file = self._write_legacy(repo, "r1")
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            result = run_ledger.migrate_runs(start=repo, codex_home=codex_home)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["migrated"], ["r1"])
+            self.assertEqual(result["skipped"], [])
+            self.assertEqual(result["corrupt"], [])
+            self.assertFalse(result["noop"])
+
+            target = run_ledger.ledger_path("r1", start=repo, codex_home=codex_home)
+            self.assertTrue(target.is_file())
+            migrated = run_ledger.load_ledger("r1", start=repo, codex_home=codex_home)
+            self.assertEqual(migrated["run_id"], "r1")
+            self.assertEqual(migrated["plan"], _plan())
+            self.assertEqual(migrated["events"][-1]["kind"], "migration")
+            self.assertIn(str(legacy_file), migrated["events"][-1]["note"])
+            self.assertTrue(legacy_file.is_file())
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
+
+    def test_migrate_second_run_idempotent_noop(self):
+        repo = make_repo({"README.md": "r\n"})
+        self._write_legacy(repo, "r1")
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            first = run_ledger.migrate_runs(start=repo, codex_home=codex_home)
+            self.assertEqual(first["migrated"], ["r1"])
+            second = run_ledger.migrate_runs(start=repo, codex_home=codex_home)
+            self.assertTrue(second["ok"])
+            self.assertEqual(second["migrated"], [])
+            self.assertEqual(second["skipped"], ["r1"])
+            self.assertTrue(second["noop"])
+            target = run_ledger.ledger_path("r1", start=repo, codex_home=codex_home)
+            self.assertTrue(target.is_file())
+            reloaded = run_ledger.load_ledger("r1", start=repo, codex_home=codex_home)
+            self.assertEqual(len(reloaded["events"]), 1)
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
+
+    def test_migrate_corrupt_legacy_marked_and_not_migrated(self):
+        repo = make_repo({"README.md": "r\n"})
+        self._write_legacy(repo, "r1")
+        corrupt = self._legacy_dir(repo) / "r2" / "ledger.json"
+        corrupt.parent.mkdir(parents=True, exist_ok=True)
+        corrupt.write_text("{ not json", encoding="utf-8")
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            result = run_ledger.migrate_runs(start=repo, codex_home=codex_home)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["migrated"], ["r1"])
+            self.assertEqual(len(result["corrupt"]), 1)
+            corrupt_entry = result["corrupt"][0]
+            self.assertEqual(corrupt_entry["run_id"], "r2")
+            self.assertEqual(corrupt_entry["error_code"], "invalid_input")
+            self.assertFalse(
+                run_ledger.ledger_path("r2", start=repo, codex_home=codex_home).exists()
+            )
+            proc = self._run_cli(repo, "migrate", "--repo", str(repo))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            out = json.loads(proc.stdout)
+            self.assertEqual([item["run_id"] for item in out["corrupt"]], ["r2"])
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
+
+    def test_migrate_global_exists_skips(self):
+        repo = make_repo({"README.md": "r\n"})
+        self._write_legacy(repo, "r1")
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            run_ledger.write_ledger(
+                run_ledger.new_ledger("r1", str(repo), plan=_plan(objective="already")),
+                "r1",
+                start=repo,
+                codex_home=codex_home,
+            )
+            result = run_ledger.migrate_runs(start=repo, codex_home=codex_home)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["migrated"], [])
+            self.assertEqual(result["skipped"], ["r1"])
+            self.assertTrue(result["noop"])
+            reloaded = run_ledger.load_ledger("r1", start=repo, codex_home=codex_home)
+            self.assertEqual(reloaded["plan"], _plan(objective="already"))
+            self.assertEqual(reloaded["events"], [])
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
+
+    def test_migrate_no_legacy_dir_is_noop(self):
+        repo = make_repo({"README.md": "r\n"})
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            result = run_ledger.migrate_runs(start=repo, codex_home=codex_home)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["noop"])
+            self.assertEqual(result["migrated"], [])
+            self.assertEqual(result["skipped"], [])
+            self.assertEqual(result["corrupt"], [])
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
+
+    def test_migrate_non_git_repo_is_noop(self):
+        workspace = Path(tempfile.mkdtemp(prefix="crp-ledger-ws-"))
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            result = run_ledger.migrate_runs(start=workspace, codex_home=codex_home)
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["noop"])
+            self.assertEqual(result["migrated"], [])
+            self.assertEqual(result["skipped"], [])
+            self.assertEqual(result["corrupt"], [])
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
+            shutil.rmtree(codex_home, ignore_errors=True)
+
+    def test_migrate_codex_home_override_in_git_scenario(self):
+        repo = make_repo({"README.md": "r\n"})
+        self._write_legacy(repo, "r1")
+        home_a = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        home_b = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            first = run_ledger.migrate_runs(start=repo, codex_home=home_a)
+            self.assertEqual(first["migrated"], ["r1"])
+            self.assertTrue(
+                run_ledger.ledger_path("r1", start=repo, codex_home=home_a).is_file()
+            )
+            second = run_ledger.migrate_runs(start=repo, codex_home=home_b)
+            self.assertEqual(second["migrated"], ["r1"])
+            self.assertTrue(
+                run_ledger.ledger_path("r1", start=repo, codex_home=home_b).is_file()
+            )
+        finally:
+            shutil.rmtree(home_a, ignore_errors=True)
+            shutil.rmtree(home_b, ignore_errors=True)
+
+    def test_migrate_cli_output_shape_and_exit_codes(self):
+        repo = make_repo({"README.md": "r\n"})
+        self._write_legacy(repo, "r1")
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            proc = self._run_cli(
+                repo, "migrate", "--repo", str(repo), "--codex-home", str(codex_home)
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            out = json.loads(proc.stdout)
+            self.assertEqual(set(out), {"ok", "migrated", "skipped", "corrupt", "noop"})
+            self.assertTrue(out["ok"])
+            self.assertEqual(out["migrated"], ["r1"])
+            self.assertFalse(out["noop"])
+
+            again = self._run_cli(
+                repo, "migrate", "--repo", str(repo), "--codex-home", str(codex_home)
+            )
+            self.assertEqual(again.returncode, 0, again.stderr)
+            out2 = json.loads(again.stdout)
+            self.assertEqual(out2["migrated"], [])
+            self.assertEqual(out2["skipped"], ["r1"])
+            self.assertTrue(out2["noop"])
+
+            bad = self._run_cli(repo, "migrate", "--repo", str(repo), "--nope")
+            self.assertEqual(bad.returncode, 2)
+            error = json.loads(bad.stderr)
+            self.assertEqual(error["error"]["code"], "invalid_input")
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
 
 
 class TestNoInternalErrorMatrix(unittest.TestCase):

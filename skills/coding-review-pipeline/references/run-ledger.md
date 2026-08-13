@@ -4,10 +4,14 @@
 
 ## Ledger 位置
 
-- Git 仓库：`git rev-parse --git-path coding-review-pipeline/runs/<run-id>/ledger.json`（落在 `.git` 元数据区内，绝不污染 `git status`）。
-- NON_GIT：`$CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs/<run-id>/ledger.json`；`workspace-id` 是工作区绝对路径的 SHA-256（跨会话稳定）。不使用 `TEMP`。
+Git 仓库与 NON_GIT 统一为全局状态目录：
 
-Git 仓库路径落在 `.git` 元数据区：workspace-write 沙箱对 `.git` 只读，写入 ledger 需申请仅限该路径的最小升级；`--codex-home` 只影响 NON_GIT 路径。
+- `$CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs/<run-id>/ledger.json`；`workspace-id` 是工作区绝对路径的 SHA-256（跨会话稳定）。不使用 `TEMP`，也不写入 `.git` 元数据区。
+- `--codex-home` 对 Git 与 NON_GIT 场景同效，可覆盖默认 `CODEX_HOME`（缺省为 `~/.codex`）。
+
+历史版本曾把 Git 仓库的 ledger 写入 `.git/coding-review-pipeline/runs/`；`migrate` 子命令可把 legacy 台账迁入全局状态目录（见下文）。
+
+写入全局状态目录时，workspace-write 沙箱通常只允许写工作区根；申请仅限 `$CODEX_HOME/state/coding-review-pipeline/` 的最小升级即可，禁止 danger 模式或改 `.gitignore` 绕过。
 
 同一仓库存在多个 run 时，用 `list` 子命令列出 `run_id / plan_summary / created_at / base / stage`，由用户决定恢复哪一个，禁止程序猜测。
 
@@ -102,6 +106,14 @@ Git 仓库路径落在 `.git` 元数据区：workspace-write 沙箱对 `.git` �
 
 completion_gate 对 plan 的两种失败区分：plan schema 不合法（`validate_plan_tasks` 抛错）→ `invalid_plan`；plan 合法但 `baseline.plan_fingerprint` 缺失或与当前 plan 指纹不一致 → `plan_stale`。
 
+## migrate 子命令
+
+`run_ledger.py migrate --repo <path> [--codex-home <home>]` 把旧版写入 Git `.git` 元数据区的 legacy 台账迁入全局状态目录：
+
+- legacy 位置仅用 `git rev-parse --git-path coding-review-pipeline/runs` 检测；repo 非 git 或 rev-parse 失败 → 无 legacy、no-op。
+- 对每个 `<run-id>/ledger.json`：全局目标已存在 → `skipped`（幂等）；不通过全量形状校验 → 记入 `corrupt`、不迁移；否则原子写副本到全局路径，并追加一条 `kind=migration` 的 events 记录（note 含来源路径与时间）。legacy 源保留、不删除。
+- 输出结构化 JSON：`{"ok":true,"migrated":[...],"skipped":[...],"corrupt":[...],"noop":bool}`；成功 / no-op / skip / corrupt 均 exit 0（corrupt 与 `list` 口径一致，属报告性标记），非法参数 exit 2。
+
 ## CLI
 
-子命令：`init` / `update` / `load` / `list` / `resume` / `verification-tier` / `plan-fingerprint` / `diff-fingerprint`。输出 UTF-8 JSON；退出码 `0` 正常、`2` invalid_input、`3` policy_blocked（含 plan mismatch 的 STOP）、`1` internal_error（仅编程错误）。
+子命令：`init` / `update` / `load` / `list` / `migrate` / `resume` / `verification-tier` / `plan-fingerprint` / `diff-fingerprint`。输出 UTF-8 JSON；退出码 `0` 正常、`2` invalid_input、`3` policy_blocked（含 plan mismatch 的 STOP）、`1` internal_error（仅编程错误）。
