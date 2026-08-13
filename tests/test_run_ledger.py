@@ -36,21 +36,30 @@ import completion_gate  # noqa: E402
 
 
 _TEST_CODEX_HOME: Path | None = None
+_PREVIOUS_CODEX_HOME: str | None = None
 
 
 def setUpModule() -> None:
     """Isolate every ledger write behind a temporary CODEX_HOME."""
 
     global _TEST_CODEX_HOME
+    global _PREVIOUS_CODEX_HOME
+    _PREVIOUS_CODEX_HOME = os.environ.get("CODEX_HOME")
     _TEST_CODEX_HOME = Path(tempfile.mkdtemp(prefix="crp-ledger-home-"))
     os.environ["CODEX_HOME"] = str(_TEST_CODEX_HOME)
 
 
 def tearDownModule() -> None:
     global _TEST_CODEX_HOME
+    global _PREVIOUS_CODEX_HOME
     if _TEST_CODEX_HOME is not None:
         shutil.rmtree(_TEST_CODEX_HOME, ignore_errors=True)
         _TEST_CODEX_HOME = None
+    if _PREVIOUS_CODEX_HOME is None:
+        os.environ.pop("CODEX_HOME", None)
+    else:
+        os.environ["CODEX_HOME"] = _PREVIOUS_CODEX_HOME
+    _PREVIOUS_CODEX_HOME = None
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -1066,6 +1075,76 @@ class TestMigrate(unittest.TestCase):
         finally:
             shutil.rmtree(codex_home, ignore_errors=True)
 
+    def test_migrate_shape_invalid_legacy_marked_corrupt_exit_0(self):
+        repo = make_repo({"README.md": "r\n"})
+        legacy = self._legacy_dir(repo) / "r1"
+        legacy.mkdir(parents=True, exist_ok=True)
+        # Parseable JSON but rejected by _validate_ledger: wrong schema version.
+        (legacy / "ledger.json").write_text(
+            json.dumps({"schema_version": 999, "run_id": "r1"}), encoding="utf-8"
+        )
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            result = run_ledger.migrate_runs(start=repo, codex_home=codex_home)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["migrated"], [])
+            self.assertEqual(len(result["corrupt"]), 1)
+            entry = result["corrupt"][0]
+            self.assertEqual(entry["run_id"], "r1")
+            self.assertEqual(entry["error_code"], "invalid_input")
+            target = (
+                run_ledger.runs_dir(start=repo, codex_home=codex_home)
+                / "r1"
+                / "ledger.json"
+            )
+            self.assertFalse(target.exists())
+            proc = self._run_cli(
+                repo, "migrate", "--repo", str(repo), "--codex-home", str(codex_home)
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            out = json.loads(proc.stdout)
+            self.assertEqual([item["run_id"] for item in out["corrupt"]], ["r1"])
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
+
+    def test_migrate_invalid_run_id_dir_marked_corrupt_exit_0(self):
+        repo = make_repo({"README.md": "r\n"})
+        # "bad run" is a legal filesystem name but fails _validate_run_id
+        # (space outside the allowed run_id charset). Windows reserved names
+        # such as CON cannot be created on disk, so this exercises the same
+        # reject path without relying on platform-specific names.
+        legacy = self._legacy_dir(repo) / "bad run"
+        legacy.mkdir(parents=True, exist_ok=True)
+        # Content is never read: migrate rejects the run_id before loading.
+        (legacy / "ledger.json").write_text(
+            json.dumps({"run_id": "bad run"}), encoding="utf-8"
+        )
+        codex_home = Path(tempfile.mkdtemp(prefix="crp-ledger-migrate-home-"))
+        try:
+            result = run_ledger.migrate_runs(start=repo, codex_home=codex_home)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["migrated"], [])
+            self.assertEqual(len(result["corrupt"]), 1)
+            entry = result["corrupt"][0]
+            self.assertEqual(entry["run_id"], "bad run")
+            self.assertEqual(entry["error_code"], "invalid_input")
+            target = (
+                run_ledger.runs_dir(start=repo, codex_home=codex_home)
+                / "bad run"
+                / "ledger.json"
+            )
+            self.assertFalse(target.exists())
+            proc = self._run_cli(
+                repo, "migrate", "--repo", str(repo), "--codex-home", str(codex_home)
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            out = json.loads(proc.stdout)
+            self.assertEqual(
+                [item["run_id"] for item in out["corrupt"]], ["bad run"]
+            )
+        finally:
+            shutil.rmtree(codex_home, ignore_errors=True)
+
     def test_migrate_global_exists_skips(self):
         repo = make_repo({"README.md": "r\n"})
         self._write_legacy(repo, "r1")
@@ -1211,6 +1290,17 @@ class TestNoInternalErrorMatrix(unittest.TestCase):
                 "--repo",
                 str(repo),
             ],
+            ["migrate", "--repo", str(repo)],
+        )
+        # migrate scans the legacy .git-embedded runs directory, so the same
+        # malformed ledger is mirrored there to exercise the corrupt path.
+        legacy_ledger_file = (
+            repo
+            / ".git"
+            / "coding-review-pipeline"
+            / "runs"
+            / run_id
+            / "ledger.json"
         )
         for key, shapes in mutations.items():
             for shape in shapes:
@@ -1219,6 +1309,8 @@ class TestNoInternalErrorMatrix(unittest.TestCase):
                     ledger[key] = shape
                     ledger_file.parent.mkdir(parents=True, exist_ok=True)
                     ledger_file.write_text(json.dumps(ledger), encoding="utf-8")
+                    legacy_ledger_file.parent.mkdir(parents=True, exist_ok=True)
+                    legacy_ledger_file.write_text(json.dumps(ledger), encoding="utf-8")
                     for command in commands:
                         code = self._run_cli(list(command))
                         self.assertNotEqual(code, 1)
@@ -1253,6 +1345,13 @@ class TestCli(unittest.TestCase):
         self.assertEqual(out["run_id"], "r1")
         self.assertEqual(out["schema_version"], 1)
         self.assertTrue(run_ledger.ledger_path("r1", start=repo).is_file())
+
+    def test_cli_init_codex_home_help_wording(self):
+        repo = make_repo({"README.md": "r\n"})
+        proc = self._run(repo, "init", "--help")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("CODEX_HOME override (git and NON_GIT)", proc.stdout)
+        self.assertNotIn("CODEX_HOME override for NON_GIT", proc.stdout)
 
     def test_cli_bad_run_id_exits_2(self):
         repo = make_repo({"README.md": "r\n"})

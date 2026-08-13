@@ -855,7 +855,7 @@ def main(argv: list[str] | None = None) -> int:
     init_p.add_argument("--plan", default=None, help="plan JSON file")
     init_p.add_argument("--baseline", default=None, help="baseline JSON file")
     init_p.add_argument("--models", default=None, help="models JSON file")
-    init_p.add_argument("--codex-home", default=None, help="CODEX_HOME override for NON_GIT")
+    init_p.add_argument("--codex-home", default=None, help="CODEX_HOME override (git and NON_GIT)")
 
     update_p = subparsers.add_parser("update", help="atomically update a ledger")
     update_p.add_argument("--run-id", required=True)
