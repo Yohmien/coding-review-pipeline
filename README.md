@@ -1,17 +1,38 @@
-# Coding-Review Pipeline [![skills.sh](https://skills.sh/b/Yohmien/coding-review-pipeline)](https://skills.sh/Yohmien/coding-review-pipeline)
+# Coding-Review Pipeline
+
+[![skills.sh](https://skills.sh/b/Yohmien/coding-review-pipeline)](https://skills.sh/Yohmien/coding-review-pipeline)
+[![CI](https://github.com/Yohmien/coding-review-pipeline/actions/workflows/validate.yml/badge.svg)](https://github.com/Yohmien/coding-review-pipeline/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > 作者：Yohmien；仓库名：`coding-review-pipeline`。
 
 <img width="1191" height="408" alt="image" src="https://github.com/user-attachments/assets/041e237e-24ac-4953-b02b-60cab980cd97" />
 
+为真实工程而写的 Codex 技能——把「AI 编码」从黑箱变成一条**可检查、可问责、可回滚**的流水线。V2 以五个正交 Gate（G1-G5，`route_context.py`）做路由：探索与定案 → G1 用户决策 → 完整计划确认 → live 模型确认 → 任务契约 → coding 子代理实施 → 主会话独立复验 → fresh review → 完成门禁。每个阶段都由确定性组件（change_facts / task_graph / validate_task_packet / run_ledger / agent_lifecycle / task_convergence / review_preflight / completion_gate）产出可机器核验的事实，主会话只做组件无法判定的语义决策。
 
-为真实工程而写的 Codex 技能——旨在优化编码编排的可控性。V2 以五个正交 Gate（G1-G5，`route_context.py`）做路由：探索与定案 → G1 用户决策 → 完整计划确认 → live 模型确认 → 任务契约 → coding 子代理实施 → 主会话独立复验 → fresh review → 完成门禁。每个阶段都由确定性组件（change_facts / task_graph / validate_task_packet / run_ledger / agent_lifecycle / task_convergence / review_preflight / completion_gate）产出可机器核验的事实，主会话只做组件无法判定的语义决策。
+**一句话**：主会话决策，coder 执行，fresh review 收口；子代理报告只是 claims，不能替代工作树和命令证据。
 
-基于多代理模型，由用户自主可控地选择决策模型和编码模型，以便在保证模型强度匹配角色的基础上，保证编码质量。
+**降本设计**：模型按角色分层——coding 可交给低消耗模型（如第三方 deepseek 系列），决策、设计、复审交给强模型；token 花在判断与复核上，而不是代码搬运上。
 
-例如：可引入第三方 deepseek 模型这类低消耗模型作为编码模型，决策、设计、复审交由更智能模型，可大幅降低编码消耗且保证一定质量
+## 工作流总览
 
-流水线把架构、契约和风险决策留给主会话与用户，把实际 diff 和命令证据留给工作树；子代理报告只是 claims，不能替代证据。依赖被刻意做成**小、可组合、与模型无关**的独立 skill，按需加载，而不是把细则全部复制进本 skill。
+```mermaid
+flowchart LR
+  A["探索与定案"] --> B["G1 用户决策"]
+  B -- REQUIRES_USER_DECISION --> C["grill-with-docs 追问"]
+  B -- NONE --> D["完整计划确认"]
+  C --> D
+  D --> E["Live 模型确认"]
+  E --> F["任务契约"]
+  F --> G["风险路由与实施"]
+  G --> H["主会话独立复验"]
+  H --> I["Fresh review"]
+  I -- fix-first --> G
+  I -- rethink --> A
+  I -- ship --> J["completion_gate 完成门禁"]
+```
+
+细节以 [SKILL.md](skills/coding-review-pipeline/SKILL.md) 与 `references/` 为准。
 
 ## 为什么存在这套依赖
 
@@ -53,6 +74,8 @@
 | `scripts/completion_gate.py` | 完成门禁：COMPLETE_ALLOWED / BLOCKED + 确定性 reasons（invalid_plan / plan_stale 等） |
 | `skills/contract-executor`（兄弟 skill） | coding 子代理的机械执行状态机（READ → IMPLEMENT → VERIFY → REPORT） |
 
+全部组件行为由 `tests/` 的 496 项单元测试锁定（见「质量与测试」）。
+
 ## 典型流程与 review 前置
 
 主流程：探索与定案（change_facts + search-gates）→ G1 追问（命中时）→ 完整计划确认 → live 模型确认 → 任务契约（validate_task_packet）→ 实施（G4 并行/串行，agent_lifecycle 固定动作）→ 主会话独立复验（verification-routing）→ fresh review → 完成门禁（completion_gate）。细节以 SKILL.md 与 `references/` 为准。
@@ -63,17 +86,14 @@ ocr（`open-code-review`）是 optional rule enrichment：preflight 检测到 `o
 
 ## 优势
 
-- **决策与执行分离**——架构、契约与风险决策归主会话和用户，coding 子代理只在定案边界内实施；计划、模型和 effort 都需用户确认，不自动越权。
-- **主会话决策、coder 执行**——需求、架构、契约、风险、计划、模型与验收的全部决策权在主会话和用户；coding 子代理只做执行，仅允许处理局部低风险实现判断，且必须在返回中报告、由主会话核验后才采信，从机制上把子代理的决策空间压到最小。
+- **决策与执行分离**——架构、契约与风险决策归主会话和用户；coding 子代理只在定案边界内实施，局部低风险判断也必须返回报告、经主会话核验后才采信，从机制上把子代理的决策空间压到最小。
 - **先对齐再动手**——G1 User Decision Gate 命中才路由 grill-with-docs 追问，问清全部细节（优先结构化选项）后才输出计划，避免「你以为他要 A，他做出来 B」的错位。
-- **不静默降级**——模型与 effort 每次以 live schema 校验；依赖按 CORE / CONDITIONAL / OPTIONAL 三分类：CORE 缺失停止，CONDITIONAL 命中条件成立但缺失时停止对应流程，OPTIONAL 缺失不阻断，不用缓存清单或替代品硬顶。
-- **按角色分层用模型**——决策与设计、代码复审使用强模型，coding 子代理使用弱模型；token 花在判断与复核上，而不是代码搬运上，尽量降低整体消耗。
-- **证据驱动**——只采信实际 diff、命令输出与退出码；reviewer 独立只读、线程干净，防止自审自批。
-- **review 的纯洁性**——reviewer 与 coding 严格分离：独立干净线程、行为只读、不亲手修复；任何代码变化后旧 verdict 立即失效，必须由 fresh reviewer 重新给出结论，防止自审自批或沿用过期结论。
+- **不静默降级**——模型与 effort 每次以 live schema 校验；依赖按 CORE / CONDITIONAL / OPTIONAL 三分类，缺失按档位停止或降级，不用缓存清单或替代品硬顶。
+- **证据驱动**——只采信实际 diff、命令输出与退出码；reviewer 独立干净线程、行为只读、不亲手修复，任何代码变化后旧 verdict 立即失效，必须由 fresh reviewer 重新给出结论。
 - **小且可组合**——纪律外包给 `grilling`、`domain-modeling`、`search-gates`、`ponytail` 等独立 skill，按需加载、与模型无关，可单独替换或扩展。
 - **可恢复可审计**——派发前建立工作树基线，中断后从最近安全阶段继续；失败路径按 if-then 表处理，不吞错。
 
-## 安装（30 秒设置）
+## 快速开始（30 秒）
 
 前置：Codex（CLI 或 Desktop）。本 skill、兄弟 skill `contract-executor` 与全部依赖都安装到 `$CODEX_HOME/skills`（默认 `~/.codex/skills`），目录名必须与 SKILL.md frontmatter 的 `name` 一致。可选增强是 CodeGraph 与 `ocr` CLI，见「OPTIONAL 依赖」小节。
 
@@ -213,6 +233,12 @@ ocr delegate --help
 
 期望输出：`coding-review-pipeline` 与 `contract-executor` 均打印 `Skill is valid!`，`name` 与目录名一致；`contract-executor` 缺失视为安装不完整（fail closed），不得开始编码任务；`codegraph status` 正常返回索引状态（无索引时按 search-gates 的失败路径处理）；`ocr delegate --help` 缺失不阻断安装验证。
 
+## 质量与测试
+
+- `tests/` 共 11 个测试模块、**496 项单元测试**，覆盖全部确定性组件与契约执行器：`python -m unittest` 全绿。
+- `scripts/validate.py` 校验 skill 目录的 frontmatter 与结构；CI（`.github/workflows/validate.yml`）对 `skills/` 与 `vendor/` 持续跑同一校验。
+- `test-prompts.json` 的 6 个场景锁定 skill 行为口径（首次响应门禁、只读 review、live schema 复用等），配合子代理 with/baseline 对照评估 skill 实测表现。
+
 ## Reference：内置引用清单
 
 模仿 [mattpocock/skills](https://github.com/mattpocock/skills) 的 Reference 风格。`references/` 九份文件随 `skills/coding-review-pipeline/` 一起复制，无需单独安装；加载时机以 `route_context.py` 输出为准（G5 才加载 recovery-and-failures.md，decompose/execute/review 或 G2 HIGH 才加载 task-contracts.md，verify/complete 或 completion_claim 才加载 verification-routing.md）：
@@ -254,7 +280,7 @@ ocr delegate --help
 ```text
 .
 ├── README.md
-├── LICENSE
+├── LICENSE                        ← MIT
 ├── skills/
 │   ├── coding-review-pipeline/
 │   │   ├── SKILL.md
@@ -269,7 +295,7 @@ ocr delegate --help
 │   ├── install-deps.sh            ← 一键安装全部依赖（含 vendor）
 │   ├── install-deps.ps1           ← Windows 等价脚本
 │   └── validate.py                ← 校验 skill 目录 frontmatter
-├── tests/                         ← 确定性组件全量回归测试
+├── tests/                         ← 确定性组件全量回归测试（11 模块 / 496 项）
 └── .github/workflows/validate.yml ← CI：对 skills/ 与 vendor/ 跑 validate.py
 ```
 
