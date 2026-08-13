@@ -50,8 +50,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 - verify/complete 阶段或 completion_claim 命中时，读取 [references/verification-routing.md](references/verification-routing.md)。
 - G5 输出 `required`（incomplete ledger、running agent、dirty baseline、interrupted run、context recovery、unknown mutation 任一成立）时，读取 [references/recovery-and-failures.md](references/recovery-and-failures.md)。
 - 定位结构、调用关系、数据流或影响面时调用 search-gates；CodeGraph 图谱层缺失时由 search-gates 自身降级 rg 锁定，不在本 skill 复制搜索细则。
-- G1 输出 `REQUIRES_USER_DECISION` 时调用 grill-with-docs（该 skill 组合 grilling 与 domain-modeling），先完成追问门禁再形成完整计划；G1 输出 `NONE` 时跳过。
-- 编码和 review 应用 ponytail；review 子代理第一步必须运行 `scripts/review_preflight.py`（detect-and-reuse、归一化、negative coverage、P0-P3 context 打包），见“Fresh review 与修正循环”。
+- G1 输出 `REQUIRES_USER_DECISION` 时调用 grill-with-docs（传递 grilling / domain-modeling），追问口径见第 1.5 节；G1 输出 `NONE` 时跳过。
+- 编码和 review 应用 ponytail；review 子代理第一步必须运行 `scripts/review_preflight.py`，消费口径见第 7 节。
 - 缺陷修复调用 systematic-debugging；可测实现调用 test-driven-development；完成声明前调用 verification-before-completion。只读取适用 skill，不复制其规则。
 
 ## 依赖与前置
@@ -79,7 +79,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 ### OPTIONAL（增强，可缺失）
 
-- `open-code-review`（`ocr` CLI）：optional rule enrichment。来源 [alibaba/open-code-review](https://github.com/alibaba/open-code-review)；安装 `npm install -g @alibaba-group/open-code-review`（需 Node ≥14；要求 Git ≥2.41）。`review_preflight.py` 检测到 `ocr` 时用 `ocr delegate rule` 生成附加规则上下文；不可用输出 `skipped` 并继续，绝不 STOP review。
+- `open-code-review`（`ocr` CLI）：optional rule enrichment。来源 [alibaba/open-code-review](https://github.com/alibaba/open-code-review)；安装 `npm install -g @alibaba-group/open-code-review`（需 Node ≥14；要求 Git ≥2.41）。可用性与消费口径见第 7 节。
 - CodeGraph 图谱索引：search-gates 的图谱层。缺失时 search-gates 按自身兜底表降级 rg 锁定（显式路径）或报告缺失，不假装命中。
 
 ### 安装与验证
