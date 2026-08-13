@@ -126,7 +126,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 计划确认后：
 
-1. 从当前 spawn_agent schema 读取模型与 reasoning_effort 枚举，并核实可显式传递所选值。
+1. 从当前 spawn_agent schema 读取模型与 reasoning_effort 枚举，并核实可显式传递所选值；读不到 live schema（spawn_agent 工具缺失、枚举为空或读取失败）时同样触发 🔴 CHECKPOINT · 🛑 STOP：报告缺失能力，不得回退到历史记忆、静态清单或上次会话记录猜测。
 2. 依据已确认计划的复杂度，先紧凑推荐 coding model、review model、coding effort、review effort 四项；模型使用 live schema 中的完整 ID，effort 使用精确枚举值。
 3. 在请求选择前检查展示覆盖率：若当前推荐与候选未覆盖全部模型条目或全部 effort 条目，紧凑展示所有模型完整 ID、effort 并集，以及每个模型支持的 effort；已覆盖时不重复展开。
 4. 请用户确认四项。自由文本可一次填写；使用结构化输入时，以当前 schema 为准，用最少轮次收齐四项，每题尽量使用允许的最大显式选项数，并把推荐项置顶。
