@@ -225,3 +225,4 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - review 子代理跳过 review_preflight.py 确定性前置（detect/normalize/negative coverage/P0-P3），或无证据审查仍给出 verdict。
 - 未检查工作区就重复派发，或使用破坏性回滚覆盖用户改动。
 - 无最新命令证据声称通过，或误删正式/回归测试。
+- 把 run 台账写入 .git 元数据区或项目工作树；台账只允许落在 $CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs/（legacy 用 run_ledger migrate 迁移，不手工拷贝）。
