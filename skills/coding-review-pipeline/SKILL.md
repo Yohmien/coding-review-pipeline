@@ -25,18 +25,28 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 
 ## 不可变原则
 
-1. 主会话不得直接编写项目源码；修复规格后重新委派，不静默代写。
+1. 除下述 `DIRECT_PATCH` 外，主会话不得直接编写项目源码；修复规格后重新委派，不静默代写。
 2. 计划和模型选择都由主会话与用户确认，子代理不得重复前置审批。
 3. 不从历史记忆猜测模型、effort 或工具能力；每次编码任务读取当前 live schema。
 4. 不静默替换模型、降低 effort、跳过 reviewer 或把部分验证说成全部通过。
 5. 并行 coding 子任务的可写文件集合必须互不重叠；依赖链和共享文件必须串行。
 6. reviewer 行为只读，不实现修复；任何修复都使旧 verdict 失效。
 
+## 执行经济性预路由
+
+进入完整状态机前先判定以下短路；命中即跳过与结果无关的计划、模型、packet、代理和恢复动作：
+
+- `DIRECT_PATCH`：用户明确要求主会话快速修改；目标、紧耦合源码/测试写集和验收均已明确；且不涉及公共 API、schema、持久化数据、事务、并发、权限、依赖或外部副作用。主会话保护工作树后直接完成最小修改、行为 RED、GREEN、`git diff --check` 和定向验证，不要求模型选择，不派 coder/reviewer。
+- `CONFIRMED_CONTINUATION`：完整计划、当前任务 packet 和四项模型选择已经确认，前驱已 ship。只核对最新检查点、写集无漂移且既有选择仍受 live schema 支持，然后直接派发当前任务；不得重做探索、计划、模型询问或无关搜索。
+- `KNOWN_DIRTY_BASELINE`：已有修改已归属用户、与当前写集不重叠，且没有中断 run、运行中代理或来源不明变化。只记录 changed-file baseline；不得仅因此进入 G5 recovery、重做历史审计或创建平行事实制品。
+
+任一条件无法由当前证据证明时不猜测，回到完整状态机。
+
 ## 首次响应硬门禁
 
 对用户的首次响应只能承诺当前获准阶段，并满足以下可观察条件：
 
-1. 代码变更请求尚未完成探索与完整计划确认时，只说明将先读取规约、检查工作区、定位证据；G1（见 [references/routing-gates.md](references/routing-gates.md)）命中还须先完成追问，再提交计划。不得推荐或列出任何模型 ID、reasoning_effort，不得请求模型选择，也不得承诺开始编码。
+1. 未命中执行经济性短路，且代码变更请求尚未完成探索与完整计划确认时，只说明将先读取规约、检查工作区、定位证据；G1（见 [references/routing-gates.md](references/routing-gates.md)）命中还须先完成追问，再提交计划。不得推荐或列出任何模型 ID、reasoning_effort，不得请求模型选择，也不得承诺开始编码。
 2. “只读 review”“先 review”或“顺便修一下”等未明确修复项和写入授权的请求，只承诺并执行只读 review；不得预告后续自动修复、模型选择或 coding。报告发现后，等待用户明确选择修复项并授权。
 3. 用户要求复用历史模型或允许自动换模时，先读取当前 live schema。原选择任一项不受支持即 🔴 CHECKPOINT · 🛑 STOP：列出缺失能力并请用户重选；不得接受“自动换一个”的授权作为静默替换依据。
 
@@ -90,14 +100,14 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 ## 核心状态机
 
-主流程：1 探索与定案 → 1.5 G1 追问门禁 → 2 完整计划确认 → 3 Live 模型确认 → 4 生成任务契约 → 5 风险路由与实施 → 6 主会话独立复验 → 7 Fresh review 与修正循环 → 完成条件（completion_gate 放行）。
+主流程：执行经济性预路由 → 1 探索与定案 → 1.5 G1 追问门禁 → 2 完整计划确认 → 3 Live 模型确认 → 4 生成任务契约 → 5 风险路由与实施 → 6 主会话独立复验 → 7 Fresh review 与修正循环 → 完成条件（completion_gate 放行）。
 
 ### 1. 探索与定案
 
 1. 用 `scripts/change_facts.py` 收集 change facts，并检查 AGENTS.md、git status --short 和用户已有改动。
 2. 按 search-gates 获取足够上下文；目标在配置或测试文件时再精确读取源码。
 3. 缺陷先复现并形成根因证据，禁止猜测式修改。
-4. 主会话定案接口、数据契约、边界、异常、事务、并发、幂等、超时、重试和补偿。
+4. 主会话只定案可由仓库事实、已确认用户决定或既有权威契约唯一确定的接口与边界；出现互斥高影响方案时进入 G1，不得自行选择。
 5. 判定风险等级与任务依赖，列出允许修改的文件集合。
 
 输出：change facts、根因证据、已定案接口与边界、允许修改的文件集合。
@@ -105,6 +115,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 ### 1.5 G1 追问门禁（one-hop）
 
 是否追问由 `scripts/route_context.py` 的 G1 User Decision Gate 决定，可读契约见 [references/routing-gates.md](references/routing-gates.md)：只有输出 `REQUIRES_USER_DECISION` 才路由 grill-with-docs（tools 附带 request_user_input）；多文件、多模块、CodeGraph、rg、工具/测试/阅读数量等一律不是 G1 触发条件。命中后按 grill-with-docs（及传递的 grilling / domain-modeling）执行追问，细节不复制到本 skill；G1 输出 `NONE` 时跳过，直接根据探索证据形成完整计划。
+
+advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公共 API、schema、事务、并发、外部副作用、兼容性、部署切换或验收口径的互斥选择，就设置 `user_decision_required=true` 并重新运行路由，强制进入 grill-with-docs；主会话不得挑选偏好后继续 advisor。仅把已确认决定机械写回文档、修正错字或统一不改变语义的措辞时，才保持 G1=`NONE`。
 
 输出：G1 判定与已确认的用户决策（未命中则直接进入完整计划）。
 
@@ -118,7 +130,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 - 追问阶段已更新的 glossary / ADR（如有）及其与实施任务的关系。
 - 测试与验证命令、风险、回滚或补偿。
 
-🔴 CHECKPOINT · 🛑 STOP：用户未确认完整计划前，不展示模型选择，不派 coding 子代理，不修改项目代码。
+🔴 CHECKPOINT · 🛑 STOP：除 `DIRECT_PATCH` 和 `CONFIRMED_CONTINUATION` 外，用户未确认完整计划前，不展示模型选择，不派 coding 子代理，不修改项目代码。
 
 输出：已确认的完整计划。
 
@@ -144,6 +156,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 3. 规格定案所有影响接口、契约、安全和范围的判断；允许 coder 处理局部低风险实现判断，但必须在返回中报告。
 4. 每个任务声明可写集和必要只读依赖；禁止转发主会话完整对话或其他子代理 raw 对话。
 5. 单文件单点任务保持单任务，不为并行而过度拆分；拆分与并行可行性以 task_graph.py 的 CAN 输出为准。
+6. 可测任务的 RED 必须实际执行测试且因目标行为断言失败；`testCompile`、`cannot find symbol`、测试收集、语法、依赖或环境失败均为 `INVALID_RED`。先修复测试夹具或建立最小可编译壳，直到 `tests_run > 0` 且失败签名符合预期，才允许进入 GREEN。
+7. run 状态只写 canonical ledger；不得另建 `ledger-state`、`task-facts`、`verification-*` 或 `completed-*` 平行事实副本。
 
 输出：通过 `validate_task_packet.py` 校验的 coder packet。
 
@@ -157,7 +171,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 | 多任务/跨模块 | 多个互不重叠文件集或明确依赖链 | 无依赖 coder 并行；存在跨任务接口或数据契约依赖时，主会话先核对前驱实际 diff 与既定契约，高风险承诺再交 fresh commitment-boundary advisor，随后派下游 coder；全部完成后 fresh integration reviewer |
 | 高风险 | 并发、事务、安全、迁移、公共 API、外部副作用、宽影响重构 | 编码前 fresh commitment-boundary advisor；计划修正后再实施；最后 fresh integration reviewer |
 
-advisor 只给 proceed | change | stop，不能替主会话决策。coder 只修改授权文件，按 packet 验证并返回实际证据。
+advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺边界最多一轮完整 advisor 加一轮聚焦复核；聚焦后只剩不改变语义的措辞时由主会话机械收口，不再启动 advisor。多任务只对公共契约、状态机、SQL、事务或外部副作用边界做独立 task review；机械叶子任务由主会话复验，最终 integration reviewer 统一收口。coder 只修改授权文件，按 packet 验证并返回实际证据。
 
 输出：按 G2/G4 路由的实施计划与派发指令。
 
@@ -197,9 +211,12 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 ## 工作树、线程与恢复
 
 - 派发前建立 changed-file baseline，保留已有脏文件和用户修改；具体做法见 recovery-and-failures.md。
+- 已归属、与写集不重叠且无中断/运行代理的用户修改属于 `KNOWN_DIRTY_BASELINE`，不单独触发 recovery。
 - 只回收已完成且无需追问、修复或恢复的线程；先保存任务状态、实际文件清单、证据和 verdict。
 - 中断恢复时先检查工作树与线程状态，再从最近安全阶段继续；不得未检查就重复派发或覆盖改动。
 - 工具、模型、线程、范围或验证失败按 recovery-and-failures.md 的 if-then 表处理，失败路径不得吞掉。
+
+长时间异步工作只在状态转换时通知用户：`blocked/input-required`、`completed`、`errored`、`fix-first` 或 `ship`。`running` 且无新事实的等待超时不是进度事件：不得发送“仍在运行/继续等待”，不得读取行数、哈希或写集验活，不得催促代理。`wait_agent` 使用至少 600000 ms，coding/review 无需中间结果时优先 900000-1800000 ms；外层 `functions.exec` 比最长嵌套等待至少多 30000 ms。终端 session 的空 `write_stdin` 轮询至少 180000 ms、优先 300000 ms；非空交互输入不应用长等待。
 
 ## 完成条件
 
@@ -207,7 +224,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 
 只有同时满足以下条件才可声明完成（确定性检查以 `scripts/completion_gate.py` 输出为准，`COMPLETE_ALLOWED` 才放行）：
 
-1. 全部任务获得当前 diff 对应的 fresh ship。
+1. 要求独立 task review 的边界任务获得当前 diff 对应的 fresh ship；机械叶子任务完成主会话复验，整体获得当前 diff 对应的 fresh integration ship。`DIRECT_PATCH` 以主会话最新验证代替 reviewer verdict。
 2. 主会话确认最终实际改动文件均在范围内，并标注在原有脏文件上继续的修改。
 3. 按 verification-before-completion 获得最新完整验证证据。
 4. 明确列出未执行验证及客观原因。
@@ -217,7 +234,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 
 ## 核心黑名单
 
-- 主会话直接编辑项目源码或静默修补失败 patch。
+- 未命中 `DIRECT_PATCH` 时主会话直接编辑项目源码，或静默修补失败 patch。
 - 未确认计划或四项模型/effort 就派发 coding。
 - 信任 worker 自报而不检查实际 diff 和重跑验证。
 - 并行修改重叠文件，或把 raw 子代理对话转给其他代理。
@@ -226,3 +243,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - 未检查工作区就重复派发，或使用破坏性回滚覆盖用户改动。
 - 无最新命令证据声称通过，或误删正式/回归测试。
 - 把 run 台账写入 .git 元数据区或项目工作树；台账只允许落在 $CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs/（legacy 用 run_ledger migrate 迁移，不手工拷贝）。
+- 把缺类、编译、测试收集、语法、依赖或环境错误称为 RED，或在 `tests_run == 0` 时进入 GREEN。
+- 对无状态变化的 wait timeout 输出 commentary、读取工作区验活、催促代理或短间隔轮询。
+- advisor 暴露新的高影响互斥选择后由主会话自行定案，或在聚焦复核只剩措辞时继续 advisor 自循环。
+- 为同一 run 创建 canonical ledger 之外的 task/verification/completed 平行事实文件。
