@@ -1,8 +1,7 @@
 # Coding-Review Pipeline
 
-[![skills.sh](https://skills.sh/b/Yohmien/coding-review-pipeline)](https://skills.sh/Yohmien/coding-review-pipeline)
-[![CI](https://github.com/Yohmien/coding-review-pipeline/actions/workflows/validate.yml/badge.svg)](https://github.com/Yohmien/coding-review-pipeline/actions/workflows/validate.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<img width="2848" height="852" alt="生成机械流水线风格的coding-review-pipeline图片" src="https://github.com/user-attachments/assets/f8e565ab-654b-4420-8da6-eaadf1459d8f" />
+
 
 > 作者：Yohmien；仓库名：`coding-review-pipeline`。
 
