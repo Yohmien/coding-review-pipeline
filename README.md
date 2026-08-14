@@ -1,11 +1,13 @@
 # Coding-Review Pipeline
 
+[![skills.sh](https://skills.sh/b/Yohmien/coding-review-pipeline)](https://skills.sh/Yohmien/coding-review-pipeline)
+[![CI](https://github.com/Yohmien/coding-review-pipeline/actions/workflows/validate.yml/badge.svg)](https://github.com/Yohmien/coding-review-pipeline/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 <img width="2848" height="852" alt="生成机械流水线风格的coding-review-pipeline图片" src="https://github.com/user-attachments/assets/f8e565ab-654b-4420-8da6-eaadf1459d8f" />
 
 
 > 作者：Yohmien；仓库名：`coding-review-pipeline`。
-
-<img width="1191" height="408" alt="image" src="https://github.com/user-attachments/assets/041e237e-24ac-4953-b02b-60cab980cd97" />
 
 为真实工程而写的 Codex 技能——把「AI 编码」从黑箱变成一条**可检查、可问责、可回滚**的流水线。V2 以五个正交 Gate（G1-G5，`route_context.py`）做路由：探索与定案 → G1 用户决策 → 完整计划确认 → live 模型确认 → 任务契约 → coding 子代理实施 → 主会话独立复验 → fresh review → 完成门禁。每个阶段都由确定性组件（change_facts / task_graph / validate_task_packet / run_ledger / agent_lifecycle / task_convergence / review_preflight / completion_gate）产出可机器核验的事实，主会话只做组件无法判定的语义决策。
 
