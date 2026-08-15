@@ -29,7 +29,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 2. 计划和模型选择都由主会话与用户确认，子代理不得重复前置审批。
 3. 不从历史记忆猜测模型、effort 或工具能力；每次编码任务读取当前 live schema。
 4. 不静默替换模型、降低 effort、跳过 reviewer 或把部分验证说成全部通过。
-5. 并行 coding 子任务的可写文件集合必须互不重叠；依赖链和共享文件必须串行。
+5. `task_graph.py` 判定为 ready、parallel-safe 且写集两两不重叠的任务必须由主会话主动并发派发；只局部串行依赖链和冲突分量。
 6. reviewer 行为只读，不实现修复；任何修复都使旧 verdict 失效。
 
 ## 执行经济性预路由
@@ -168,8 +168,16 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 | 等级 | 条件 | 流程 |
 |---|---|---|
 | 普通单点 | 边界明确、单一责任、影响局部 | coder → 主会话检查 diff/复验 → fresh final reviewer |
-| 多任务/跨模块 | 多个互不重叠文件集或明确依赖链 | 无依赖 coder 并行；存在跨任务接口或数据契约依赖时，主会话先核对前驱实际 diff 与既定契约，高风险承诺再交 fresh commitment-boundary advisor，随后派下游 coder；全部完成后 fresh integration reviewer |
+| 多任务/跨模块 | 多个互不重叠文件集或明确依赖链 | 按下述调度循环持续填满可用 slot；存在跨任务接口或数据契约依赖时，主会话先核对前驱实际 diff 与既定契约，高风险承诺再交 fresh commitment-boundary advisor，随后解锁下游 coder；全部收口后 fresh integration reviewer |
 | 高风险 | 并发、事务、安全、迁移、公共 API、外部副作用、宽影响重构 | 编码前 fresh commitment-boundary advisor；计划修正后再实施；最后 fresh integration reviewer |
+
+#### 主会话并发调度循环
+
+1. 进入阶段 5，以及任一 coder/reviewer 出现 `blocked`、`completed`、`fix-first` 或 `ship` 时，立即以最新前驱闭包重跑 `task_graph.py`。`READY_CODING = ready - active - waiting_verification - waiting_review - fix_required`；`topological_order` 只表达依赖，不是串行执行顺序。
+2. 计算共享 agent 容量的空闲 slot，从 `READY_CODING` 选择不超过容量的最大两两 parallel-safe 子集；冲突时只从每个冲突分量选一个，并保留所有独立任务。容量不足依次优先：原 coder 的 fix-first、能解锁后继的 task review/coder、最长剩余关键路径、后继数、风险等级、`TASK_ID`。
+3. 同一调度轮发出全部选中 spawn 调用；每次 spawn 返回 agent id 后立即派下一个，不在两个 spawn 之间等待工作结果。某一 spawn 失败只阻塞该任务并继续派发其他独立任务，不得把整轮降级为串行。
+4. coder 返回后主会话立即独立复验；任务 diff 已稳定且与运行中任务无依赖时，立即派 fresh task reviewer，与其他 coder/reviewer 并发。机械叶子通过主会话复验即可解锁后继；要求 task review 的边界任务只有 `ship` 后才计入 task graph 的 completed 集合。
+5. 等待时把全部 active agent id 传入一次长 `wait_agent`，处理最先到达的终态后立刻回到第 1 步补位；不得逐个 agent 串行等待，也不得等待整批 coder 完成后才开始 task review。final integration reviewer 是唯一全局屏障，必须等全部相关任务、fix-first 和最新复验收口。
 
 advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺边界最多一轮完整 advisor 加一轮聚焦复核；聚焦后只剩不改变语义的措辞时由主会话机械收口，不再启动 advisor。多任务只对公共契约、状态机、SQL、事务或外部副作用边界做独立 task review；机械叶子任务由主会话复验，最终 integration reviewer 统一收口。coder 只修改授权文件，按 packet 验证并返回实际证据。
 
@@ -245,5 +253,6 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - 把 run 台账写入 .git 元数据区或项目工作树；台账只允许落在 $CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs/（legacy 用 run_ledger migrate 迁移，不手工拷贝）。
 - 把缺类、编译、测试收集、语法、依赖或环境错误称为 RED，或在 `tests_run == 0` 时进入 GREEN。
 - 对无状态变化的 wait timeout 输出 commentary、读取工作区验活、催促代理或短间隔轮询。
+- ready 非空且存在空闲 slot 时只派一个任务、等待整批 coder 后才启动 task review、因一组冲突全局串行、或逐个等待 active agent。
 - advisor 暴露新的高影响互斥选择后由主会话自行定案，或在聚焦复核只剩措辞时继续 advisor 自循环。
 - 为同一 run 创建 canonical ledger 之外的 task/verification/completed 平行事实文件。
