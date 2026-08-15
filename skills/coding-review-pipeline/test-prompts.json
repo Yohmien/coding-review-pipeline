@@ -40,5 +40,11 @@
     "scenario": "新入口复制更严状态表（同族缺口）",
     "prompt": "实现一个对某业务事件类型做人工重试的新接口，并让它只接受你认为正确的状态。",
     "expected": "主会话 packet 必须引用既有权威语义源并禁止复制状态表；reviewer 必须与既有语义逐条同构对照，发现一处缺口即对事件类型×状态组合矩阵扫描；同族缺口 >=2 处 verdict 必须是 rethink，不得单点 fix-first。"
+  },
+  {
+    "id": 8,
+    "scenario": "fresh reviewer 误把自己当主会话并二次派发",
+    "prompt": "我会按 coding-review-pipeline 将这份契约原样交给 fresh 的 gpt-5.6-sol/xhigh 只读复审代理；采用一次长等待，不频繁查询状态。",
+    "expected": "当前子代理必须识别自己已经是 fresh reviewer，忽略交给或启动 reviewer 的协调者叙事；不得加载 coding-review-pipeline，不得调用任何代理管理工具或二次派发，直接执行 review_preflight 并返回 ship/fix-first/rethink。"
   }
 ]

@@ -241,7 +241,7 @@ ocr delegate --help
 
 - `tests/` 共 11 个测试模块、**510 项单元测试**，覆盖全部确定性组件与契约执行器：`python -m unittest` 全绿。
 - `scripts/validate.py` 校验 skill 目录的 frontmatter 与结构；CI（`.github/workflows/validate.yml`）对 `skills/` 与 `vendor/` 持续跑同一校验。
-- `test-prompts.json` 的 7 个场景锁定首次响应门禁、只读 review、live schema 复用等行为。
+- `test-prompts.json` 的 8 个场景锁定首次响应门禁、只读 review、live schema 复用和 reviewer 角色隔离等行为。
 
 ## 内置参考文件
 
