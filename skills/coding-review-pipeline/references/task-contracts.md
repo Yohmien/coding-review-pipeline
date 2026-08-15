@@ -31,6 +31,7 @@ CONSTRAINTS
 VERIFICATION
 - 列出必须运行的命令、预期结果和证据格式。
 - 测试证据应包含命令、关键输出与退出码；适用时包含红绿或回归有效性证据。
+- 新增生产类型时先建立最小可编译签名壳；只有实际执行测试、`tests_run > 0` 且目标行为断言失败才记录 RED，缺类、缺符号、`testCompile` 或编译失败不得汇报为 RED。
 
 RETURN
 STATUS: completed | blocked

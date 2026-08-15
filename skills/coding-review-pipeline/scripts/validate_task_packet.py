@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -74,6 +75,36 @@ DEFAULT_DECISION_BUDGET = "MECHANICAL"
 DECISION_OWNERS = ("user", "main", "advisor")
 DECISION_STATUS_RESOLVED = "resolved"
 REQUIRED_DECISION_FIELDS = ("id", "domain", "owner", "status", "value", "evidence", "affects")
+
+RED_CLAIM_PATTERN = re.compile(r"(?<!\w)RED\s*[:：]", re.IGNORECASE)
+INVALID_RED_PATTERNS = (
+    re.compile(
+        r"实现缺失|implementation\s+(?:is\s+)?missing|missing\s+implementation|"
+        r"not\s+implemented|unimplemented|fails?\s+until\s+implemented|未实现|尚未实现|缺少实现",
+        re.IGNORECASE,
+    ),
+    re.compile(r"生产(?:类|类型).{0,40}(?:不存在|缺失|未定义|找不到)", re.IGNORECASE),
+    re.compile(
+        r"production\s+(?:class|type).{0,40}(?:missing|does\s+not\s+exist|not\s+found)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"cannot\s+find\s+symbol|missing\s+symbol|symbol\s+not\s+found|找不到符号|缺失符号", re.IGNORECASE),
+    re.compile(r"testCompile", re.IGNORECASE),
+    re.compile(r"(?:compilation|compile)\s+(?:failed|failure|error)|编译.{0,20}(?:失败|错误)", re.IGNORECASE),
+)
+NEW_PRODUCTION_TYPE_PATTERN = re.compile(
+    r"新增生产(?:类|类型)|new\s+production\s+(?:class|type)", re.IGNORECASE
+)
+COMPILABLE_SHELL_PATTERN = re.compile(
+    r"最小可编译(?:的)?签名壳|minimal\s+compilable\s+signature\s+shell", re.IGNORECASE
+)
+POSITIVE_TESTS_RUN_PATTERN = re.compile(
+    r"tests_run\s*(?:>\s*0|={1,2}\s*[1-9]\d*|:\s*[1-9]\d*)", re.IGNORECASE
+)
+TARGET_ASSERTION_FAILURE_PATTERN = re.compile(
+    r"目标行为.{0,20}断言.{0,10}失败|target\s+behaviou?r.{0,20}assertion.{0,10}(?:failed|failure)",
+    re.IGNORECASE,
+)
 
 def _load_json(path: str, label: str) -> object:
     target = Path(path)
@@ -268,6 +299,47 @@ def _is_string_list(value: object, require_nonempty: bool = False) -> bool:
     return all(isinstance(item, str) and bool(item.strip()) for item in value)
 
 
+def _red_scan_text(entry: str) -> str:
+    normalized = re.sub(r"\s+", " ", entry)
+    marker = RED_CLAIM_PATTERN.search(normalized)
+    if marker is None:
+        return normalized
+    quoted = re.compile(r'''("[^"\r\n]*"|'[^'\r\n]*'|`[^`\r\n]*`)''')
+    return normalized[: marker.end()] + quoted.sub(" ", normalized[marker.end() :])
+
+
+def _validate_red_evidence(verification: object, evidence: list[dict]) -> None:
+    if isinstance(verification, str):
+        entries = [verification]
+    elif isinstance(verification, list):
+        entries = [entry for entry in verification if isinstance(entry, str)]
+    else:
+        return
+
+    for entry in entries:
+        scan_text = _red_scan_text(entry)
+        if not RED_CLAIM_PATTERN.search(scan_text):
+            continue
+        if any(pattern.search(scan_text) for pattern in INVALID_RED_PATTERNS):
+            problem = (
+                "RED must not use missing production code, symbols, testCompile, or compilation "
+                "failures; establish a compilable test fixture first"
+            )
+        elif not POSITIVE_TESTS_RUN_PATTERN.search(scan_text) or not TARGET_ASSERTION_FAILURE_PATTERN.search(scan_text):
+            problem = "RED must state tests_run > 0 and a target behavior assertion failure"
+        elif NEW_PRODUCTION_TYPE_PATTERN.search(scan_text) and not COMPILABLE_SHELL_PATTERN.search(scan_text):
+            problem = "RED for a new production type must first state a minimal compilable signature shell"
+        else:
+            continue
+        evidence.append(
+            {
+                "kind": "invalid_red_evidence",
+                "field": "VERIFICATION",
+                "problem": problem,
+            }
+        )
+
+
 def _validate_path_fields(packet: dict, evidence: list[dict]) -> None:
     write_keys: dict[str, str] = {}
     read_keys: dict[str, str] = {}
@@ -356,6 +428,7 @@ def validate_packet(
                     "problem": "must be a non-empty string or a non-empty list of non-empty strings",
                 }
             )
+    _validate_red_evidence(packet.get("VERIFICATION"), evidence)
     if isinstance(packet.get("WRITE_SET"), list) and not packet["WRITE_SET"]:
         evidence.append(
             {"kind": "invalid_field", "field": "WRITE_SET", "problem": "must contain at least one repo-relative path"}

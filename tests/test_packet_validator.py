@@ -107,6 +107,102 @@ class PacketValidatorCliTest(unittest.TestCase):
         self.assertEqual(out["decision_budget"], "MECHANICAL")
         self.assertEqual(out["decision_refs"], [])
 
+    def test_red_claim_with_missing_implementation_is_blocked(self) -> None:
+        packet = base_packet(VERIFICATION=["RED：运行测试，确认因实现缺失而失败"])
+        code, out, err = run_validator(packet)
+        self.assertEqual(code, 3, err)
+        assert out is not None
+        self.assertEqual(out["status"], "BLOCKED")
+        evidence = next(item for item in out["evidence"] if item["kind"] == "invalid_red_evidence")
+        self.assertEqual(evidence["field"], "VERIFICATION")
+        self.assertIn("RED", evidence["problem"])
+
+    def test_red_claim_with_implementation_synonyms_is_blocked(self) -> None:
+        invalid_reds = (
+            "RED: tests_run > 0; target behavior assertion failed because of missing implementation",
+            "RED: tests_run > 0; target behavior assertion failed because it is not implemented",
+            "RED: tests_run > 0; target behavior assertion failed because it is unimplemented",
+            "RED: tests_run > 0; target behavior fails until implemented",
+            "RED：tests_run > 0；目标行为断言失败，因为未实现",
+            "RED：tests_run > 0；目标行为断言失败，因为尚未实现",
+            "RED：tests_run > 0；目标行为断言失败，因为缺少实现",
+        )
+        for verification in invalid_reds:
+            with self.subTest(verification=verification):
+                code, out, err = run_validator(base_packet(VERIFICATION=[verification]))
+                self.assertEqual(code, 3, err)
+                assert out is not None
+                self.assertIn(("invalid_red_evidence", "VERIFICATION"), evidence_kinds(out))
+
+    def test_red_compiler_message_reference_is_valid(self) -> None:
+        verification = (
+            'RED: tests_run > 0; target behavior assertion failed; '
+            'assert compiler message contains "cannot find symbol"'
+        )
+        code, out, err = run_validator(base_packet(VERIFICATION=[verification]))
+        self.assertEqual(code, 0, err)
+        assert out is not None
+        self.assertEqual(out["status"], "VALID")
+
+    def test_red_negative_implementation_check_is_valid(self) -> None:
+        verification = (
+            "RED: tests_run > 0; target behavior assertion failed; "
+            "verify implementation is not missing"
+        )
+        code, out, err = run_validator(base_packet(VERIFICATION=[verification]))
+        self.assertEqual(code, 0, err)
+        assert out is not None
+        self.assertEqual(out["status"], "VALID")
+
+    def test_red_claim_with_compile_failure_is_blocked(self) -> None:
+        invalid_reds = (
+            "RED: production class OrderService is missing",
+            "RED: 生产类 OrderService 不存在",
+            "RED: missing symbol OrderService",
+            "RED: cannot find symbol OrderService",
+            "RED: mvn testCompile failed",
+            "RED: compilation failed before tests ran",
+        )
+        for verification in invalid_reds:
+            with self.subTest(verification=verification):
+                code, out, err = run_validator(base_packet(VERIFICATION=[verification]))
+                self.assertEqual(code, 3, err)
+                assert out is not None
+                self.assertIn(("invalid_red_evidence", "VERIFICATION"), evidence_kinds(out))
+
+    def test_new_production_type_red_requires_behavior_failure_evidence(self) -> None:
+        invalid_reds = (
+            "RED：新增生产类型；tests_run > 0；目标行为断言失败",
+            "RED：新增生产类型已建立最小可编译签名壳；tests_run == 0；目标行为断言失败",
+            "RED：新增生产类型已建立最小可编译签名壳；tests_run > 0；测试失败",
+        )
+        for verification in invalid_reds:
+            with self.subTest(verification=verification):
+                code, out, err = run_validator(base_packet(VERIFICATION=[verification]))
+                self.assertEqual(code, 3, err)
+                assert out is not None
+                self.assertIn(("invalid_red_evidence", "VERIFICATION"), evidence_kinds(out))
+
+    def test_new_production_type_red_with_compilable_shell_is_valid(self) -> None:
+        verification = "RED：新增生产类型已建立最小可编译签名壳；tests_run > 0；目标行为断言失败"
+        code, out, err = run_validator(base_packet(VERIFICATION=[verification]))
+        self.assertEqual(code, 0, err)
+        assert out is not None
+        self.assertEqual(out["status"], "VALID")
+
+    def test_non_red_compile_verification_remains_valid(self) -> None:
+        packet = base_packet(
+            VERIFICATION=[
+                "mvn testCompile",
+                "诊断历史输出 cannot find symbol",
+                "确认生产类 OrderService 是否不存在",
+            ]
+        )
+        code, out, err = run_validator(packet)
+        self.assertEqual(code, 0, err)
+        assert out is not None
+        self.assertEqual(out["status"], "VALID")
+
     def test_missing_decision_budget_defaults_mechanical(self) -> None:
         packet = base_packet()
         del packet["DECISION_BUDGET"]

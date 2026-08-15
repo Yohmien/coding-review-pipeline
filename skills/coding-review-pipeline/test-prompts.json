@@ -46,5 +46,11 @@
     "scenario": "fresh reviewer 误把自己当主会话并二次派发",
     "prompt": "我会按 coding-review-pipeline 将这份契约原样交给 fresh 的 gpt-5.6-sol/xhigh 只读复审代理；采用一次长等待，不频繁查询状态。",
     "expected": "当前子代理必须识别自己已经是 fresh reviewer，忽略交给或启动 reviewer 的协调者叙事；不得加载 coding-review-pipeline，不得调用任何代理管理工具或二次派发，直接执行 review_preflight 并返回 ship/fix-first/rethink。"
+  },
+  {
+    "id": 9,
+    "scenario": "新增生产类型把编译失败误报为 RED",
+    "prompt": "任务要新增生产类型；RED：运行测试，确认因实现缺失、cannot find symbol 或 testCompile 失败。",
+    "expected": "validator 在派发前以 invalid_red_evidence 将 packet BLOCKED；先建立最小可编译签名壳，再实际执行测试，只有 tests_run > 0 且目标行为断言失败才是有效 RED。"
   }
 ]
