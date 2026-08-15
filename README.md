@@ -4,18 +4,21 @@
 [![CI](https://github.com/Yohmien/coding-review-pipeline/actions/workflows/validate.yml/badge.svg)](https://github.com/Yohmien/coding-review-pipeline/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<img width="2848" height="852" alt="生成机械流水线风格的coding-review-pipeline图片" src="https://github.com/user-attachments/assets/f8e565ab-654b-4420-8da6-eaadf1459d8f" />
+<img width="2848" height="852" alt="Coding Review Pipeline 工作流" src="https://github.com/user-attachments/assets/f8e565ab-654b-4420-8da6-eaadf1459d8f" />
 
+`coding-review-pipeline` 是用于项目源码和自动化测试变更的 Codex skill。主会话负责范围、契约、风险和最终证据；coding 子代理按任务契约实施；fresh reviewer 只读审查实际 diff。子代理的完成报告不能替代工作树和命令结果。
 
-> 作者：Yohmien；仓库名：`coding-review-pipeline`。
+它不替代项目自身的 `AGENTS.md`、测试体系或代码审查规范，而是把这些约束接入一条可恢复、可验证的执行流程。
 
-为真实工程而写的 Codex 技能——把「AI 编码」从黑箱变成一条**可检查、可问责、可回滚**的流水线。V2 以五个正交 Gate（G1-G5，`route_context.py`）做路由：探索与定案 → G1 用户决策 → 完整计划确认 → live 模型确认 → 任务契约 → coding 子代理实施 → 主会话独立复验 → fresh review → 完成门禁。每个阶段都由确定性组件（change_facts / task_graph / validate_task_packet / run_ledger / agent_lifecycle / task_convergence / review_preflight / completion_gate）产出可机器核验的事实，主会话只做组件无法判定的语义决策。
+## 适用范围
 
-**一句话**：主会话决策，coder 执行，fresh review 收口；子代理报告只是 claims，不能替代工作树和命令证据。
+- 实现功能、修复缺陷、重构源码或补充自动化测试。
+- 多任务或跨模块改动，需要明确依赖、写集和并发边界。
+- 涉及公共 API、事务、并发、迁移或外部副作用，需要先确认决策再实施。
 
-**降本设计**：模型按角色分层——coding 可交给低消耗模型（如第三方 deepseek 系列），决策、设计、复审交给强模型；token 花在判断与复核上，而不是代码搬运上。
+纯解释、仓库搜索、命令执行、文档或配置单独修改、只读 review 不进入完整 coding 流水线。
 
-## 工作流总览
+## 工作流
 
 ```mermaid
 flowchart LR
@@ -33,20 +36,21 @@ flowchart LR
   I -- ship --> J["completion_gate 完成门禁"]
 ```
 
-细节以 [SKILL.md](skills/coding-review-pipeline/SKILL.md) 与 `references/` 为准。
+低风险且用户明确授权的局部修改可走 `DIRECT_PATCH`；已确认计划与模型的连续任务可从检查点继续。多任务执行时，主会话持续调度 ready 且写集互斥的任务，并让独立 task review 与其他 coder 并发；final integration review 保持为全局收口点。
 
-## 为什么存在这套依赖
+运行规则以 [SKILL.md](skills/coding-review-pipeline/SKILL.md) 与 `references/` 为准。
 
-这个 skill 不是把工程纪律写死，而是把纪律外包给一组可组合的 skill。每条依赖对应一个真实失败模式：
+## 处理的工程问题
 
-1. **计划与用户目标错位**——agent 不知道用户真正要什么就开干。修复：G1 User Decision Gate 判定是否追问，仅输出 `REQUIRES_USER_DECISION` 时路由 `grill-with-docs` 先问清全部细节再输出完整计划。
-2. **术语与领域语言漂移**——20 个词能讲清的用了 200 个，代码命名与领域脱节。修复：`domain-modeling` 随 `grill-with-docs` 传递加载，同步维护 `CONTEXT.md` glossary 与 ADR。
-3. **搜索与影响面靠猜**——跨模块改动没有证据支撑。修复：`search-gates` 固定「图谱 → 记忆 → rg 锁定 → 展开补全」四层搜索闸门；CodeGraph 图谱层缺失时按失败兜底表降级 rg 锁定（显式路径）或报告缺失，不假装命中。
-4. **跳过验证就声称完成**——把「我觉得通过了」当证据。修复：`verification-before-completion` 强制最新命令证据。
-5. **过度工程**——为不存在的问题做抽象。修复：`ponytail` 在编码与 review 阶段强制最简可行解。
-6. **缺陷乱猜修复**——症状修复掩盖根因。修复：`systematic-debugging` 强制复现-根因-假设-验证闭环。
-7. **先写码后写测试**——可测实现没有红灯先行。修复：`test-driven-development`。
-8. **review 规则与实现脱节**——reviewer 凭记忆审查，规则不落地、覆盖不全。修复：`scripts/review_preflight.py` 确定性前置（detect-and-reuse、机器覆盖与 FOCUS ON、P0-P3 context）；`open-code-review`（`ocr`）只是 optional rule enrichment，不可用输出 SKIPPED 并继续。
+| 问题 | 流水线处理方式 |
+|---|---|
+| 需求存在高影响互斥选择 | G1 只在确有用户决策时调用 `grill-with-docs` |
+| 搜索与影响面缺少证据 | `search-gates` 按图谱、记忆和精确文本逐层收敛 |
+| 任务拆分后仍被串行执行 | `task_graph.py` 计算 ready 与写集关系，主会话持续填充可用 agent slot |
+| 编译失败被误当成 TDD 红灯 | 只有实际测试执行且目标行为断言失败才算有效 RED |
+| coder 自报完成但没有独立证据 | 主会话检查实际 diff 并重跑验证 |
+| review 被实现过程污染 | 每次使用 fresh、只读 reviewer，diff 变化后旧 verdict 失效 |
+| 长任务重复规划或频繁轮询 | 从已确认检查点继续；无状态变化的异步等待保持静默 |
 
 ## 五 Gate 路由（V2）
 
@@ -75,33 +79,30 @@ flowchart LR
 | `scripts/completion_gate.py` | 完成门禁：COMPLETE_ALLOWED / BLOCKED + 确定性 reasons（invalid_plan / plan_stale 等） |
 | `skills/contract-executor`（兄弟 skill） | coding 子代理的机械执行状态机（READ → IMPLEMENT → VERIFY → REPORT） |
 
-全部组件行为由 `tests/` 的 496 项单元测试锁定（见「质量与测试」）。
+全部组件行为由 `tests/` 的 510 项单元测试锁定（见「质量与测试」）。
 
-## 典型流程与 review 前置
+## Review 与完成门禁
 
-主流程：探索与定案（change_facts + search-gates）→ G1 追问（命中时）→ 完整计划确认 → live 模型确认 → 任务契约（validate_task_packet）→ 实施（G4 并行/串行，agent_lifecycle 固定动作）→ 主会话独立复验（verification-routing）→ fresh review → 完成门禁（completion_gate）。细节以 SKILL.md 与 `references/` 为准。
+`scripts/review_preflight.py` 在 reviewer 开始前完成 analyzer 探测、finding 归一化、diff 归因、negative coverage 和 P0-P3 上下文整理。可归因的构建、测试、安全或项目配置分析器失败直接阻断；reviewer 负责语义审查，不重复机器检查。
 
-fresh review 的确定性前置是 `scripts/review_preflight.py`（不调用 LLM）：detect-and-reuse 可用 analyzer（reuse-before-install，绝不自动安装）、归一化 finding、diff 归因与去重、构建 negative coverage（MACHINE COVERAGE 的 clean/skipped/failed/unsupported + FOCUS ON）、打包 P0-P3 review context。attributable 的机器阻断（new secret、known vulnerable dependency、verification exit_code != 0、project-configured analyzer hard failure）直接采信；reviewer 只在此之上做语义审查。
+`open-code-review`（`ocr`）只提供额外规则上下文。不可用时记录 `SKIPPED` 并继续，不影响 review verdict。
 
-ocr（`open-code-review`）是 optional rule enrichment：preflight 检测到 `ocr` 时用 `ocr delegate rule` 生成附加规则上下文；不可用时输出 SKIPPED 并继续，review 绝不因此 STOP。安装提示见「OPTIONAL 依赖」。
+## 执行边界
 
-## 优势
+- 主会话只在仓库事实和已确认决策足够时定案；未决高影响选择交还用户。
+- coder 只能修改 packet 的 `WRITE_SET`，不能扩展接口、依赖或验收标准。
+- 并发只用于无依赖且写集互斥的任务；冲突分量局部串行。
+- reviewer 只读，不亲自修复；`fix-first` 回原 coder，修复后重新 review。
+- `completion_gate.py` 放行前不得声明全部完成。
 
-- **决策与执行分离**——架构、契约与风险决策归主会话和用户；coding 子代理只在定案边界内实施，局部低风险判断也必须返回报告、经主会话核验后才采信，从机制上把子代理的决策空间压到最小。
-- **先对齐再动手**——G1 User Decision Gate 命中才路由 grill-with-docs 追问，问清全部细节（优先结构化选项）后才输出计划，避免「你以为他要 A，他做出来 B」的错位。
-- **不静默降级**——模型与 effort 每次以 live schema 校验；依赖按 CORE / CONDITIONAL / OPTIONAL 三分类，缺失按档位停止或降级，不用缓存清单或替代品硬顶。
-- **证据驱动**——只采信实际 diff、命令输出与退出码；reviewer 独立干净线程、行为只读、不亲手修复，任何代码变化后旧 verdict 立即失效，必须由 fresh reviewer 重新给出结论。
-- **小且可组合**——纪律外包给 `grilling`、`domain-modeling`、`search-gates`、`ponytail` 等独立 skill，按需加载、与模型无关，可单独替换或扩展。
-- **可恢复可审计**——派发前建立工作树基线，中断后从最近安全阶段继续；失败路径按 if-then 表处理，不吞错。
-
-## 快速开始（30 秒）
+## 安装
 
 前置：Codex（CLI 或 Desktop）。本 skill、兄弟 skill `contract-executor` 与全部依赖都安装到 `$CODEX_HOME/skills`（默认 `~/.codex/skills`），目录名必须与 SKILL.md frontmatter 的 `name` 一致。可选增强是 CodeGraph 与 `ocr` CLI，见「OPTIONAL 依赖」小节。
 
 > [!IMPORTANT]
 > Codex 的 skills **没有依赖解析**：安装本 skill 不会自动安装它的依赖。CORE 与 CONDITIONAL 依赖必须一起安装，否则流水线在加载阶段报告缺失并停止（fail closed）；OPTIONAL 依赖缺失不阻断。兄弟 skill `contract-executor` 必须同步安装，缺失时不得派发 coding 子代理。
 
-### 方式 1：在 Codex 会话内安装（推荐）
+### 方式 1：在 Codex 会话内安装
 
 让 Codex 使用内置 `$skill-installer`：
 
@@ -119,15 +120,17 @@ npx skills@latest add Yohmien/coding-review-pipeline
 
 选择要安装的 skills 时，至少勾选 `coding-review-pipeline`、`contract-executor` 以及依赖表中 CORE / CONDITIONAL 的全部条目。
 
-### 方式 3：手动复制
+### 方式 3：从仓库安装
 
 ```bash
 # macOS / Linux
 mkdir -p ~/.codex/skills
 cp -R skills/coding-review-pipeline ~/.codex/skills/
+cp -R skills/contract-executor ~/.codex/skills/
 
 # Windows PowerShell
 Copy-Item -Recurse skills/coding-review-pipeline -Destination "$HOME\.codex\skills\"
+Copy-Item -Recurse skills/contract-executor -Destination "$HOME\.codex\skills\"
 ```
 
 ### 依赖安装
@@ -236,13 +239,13 @@ ocr delegate --help
 
 ## 质量与测试
 
-- `tests/` 共 11 个测试模块、**496 项单元测试**，覆盖全部确定性组件与契约执行器：`python -m unittest` 全绿。
+- `tests/` 共 11 个测试模块、**510 项单元测试**，覆盖全部确定性组件与契约执行器：`python -m unittest` 全绿。
 - `scripts/validate.py` 校验 skill 目录的 frontmatter 与结构；CI（`.github/workflows/validate.yml`）对 `skills/` 与 `vendor/` 持续跑同一校验。
-- `test-prompts.json` 的 6 个场景锁定 skill 行为口径（首次响应门禁、只读 review、live schema 复用等），配合子代理 with/baseline 对照评估 skill 实测表现。
+- `test-prompts.json` 的 7 个场景锁定首次响应门禁、只读 review、live schema 复用等行为。
 
-## Reference：内置引用清单
+## 内置参考文件
 
-模仿 [mattpocock/skills](https://github.com/mattpocock/skills) 的 Reference 风格。`references/` 九份文件随 `skills/coding-review-pipeline/` 一起复制，无需单独安装；加载时机以 `route_context.py` 输出为准（G5 才加载 recovery-and-failures.md，decompose/execute/review 或 G2 HIGH 才加载 task-contracts.md，verify/complete 或 completion_claim 才加载 verification-routing.md）：
+`references/` 的九份文件随主 skill 一起安装，并按阶段读取：
 
 - **routing-gates.md** — G1-G5 可读契约与正交性约束。
 - **review-routing.md** — `review_preflight.py` 行为口径：detect-and-reuse、统一 finding schema、归因/去重、机器阻断、negative coverage、P0-P3、pmd/checkstyle detect-only、ocr optional。
@@ -256,7 +259,7 @@ ocr delegate --help
 
 `scripts/` 目录是确定性组件（见「确定性组件」表），与 references 同等重要：任一缺失都按 recovery-and-failures.md 的失败路径处理，不继续派发。
 
-## 缺失依赖时的行为
+## 依赖缺失时
 
 流水线的不可变原则之一：**不静默降级**。三分类语义：
 
@@ -264,17 +267,12 @@ ocr delegate --help
 - CONDITIONAL 命中条件成立但缺失：G1 命中缺 `grill-with-docs`（或传递的 `grilling` / `domain-modeling`）→ 不进入追问门禁，报告并停止；缺陷修复缺 `systematic-debugging`、可测实现缺 `test-driven-development` → 停止对应流程；G5 命中缺 recovery-and-failures.md → 按内置失败路径处理。
 - OPTIONAL 缺失不阻断：ocr 不可用 → preflight 输出 SKIPPED 并继续 review；目标项目没有 `.codegraph` 索引 → search-gates 图谱闸门不可用，按兜底表降级 rg 锁定或报告缺失，不假装命中。
 
-这也是为什么依赖必须显式安装：流水线的纪律密度依赖这些 skill 真实存在。
-
-## For AI agents
-
-安装本 skill 的 agent 请注意：
+## 运行注意事项
 
 1. 安装写全局目录 `~/.codex/skills`；在受限沙箱中会被拦截，需提升权限或由用户手动复制。
 2. 安装完成后 skill 在**下一轮对话**生效；本会话内不要假设它已可加载。
 3. 校验：目录存在、frontmatter `name` 等于目录名、`references/` 与 `scripts/` 完整、兄弟 skill `contract-executor` 已同步安装（缺失 fail closed）、`python scripts/validate.py skills/coding-review-pipeline skills/contract-executor` 输出 `Skill is valid!`。
-4. 追问由 G1 判定，命中才走 `grill-with-docs`；优先使用 `request_user_input` 表达互斥选项，问题数/选项数受 live schema 限制，超出按依赖与优先级拆轮。
-5. 依赖缺失按三分类处理（CORE / CONDITIONAL 缺失停止，OPTIONAL 缺失不阻断），不静默降级、不把部分验证说成全部通过。
+4. 依赖缺失按三分类处理：CORE 或命中的 CONDITIONAL 缺失时停止；OPTIONAL 缺失不阻断。
 
 ## 仓库结构
 
@@ -296,8 +294,12 @@ ocr delegate --help
 │   ├── install-deps.sh            ← 一键安装全部依赖（含 vendor）
 │   ├── install-deps.ps1           ← Windows 等价脚本
 │   └── validate.py                ← 校验 skill 目录 frontmatter
-├── tests/                         ← 确定性组件全量回归测试（11 模块 / 496 项）
+├── tests/                         ← 确定性组件全量回归测试（11 模块 / 510 项）
 └── .github/workflows/validate.yml ← CI：对 skills/ 与 vendor/ 跑 validate.py
 ```
 
 `vendor/skills/` 中每个目录的 SKILL.md 保留原 frontmatter `name`；复制到 `$CODEX_HOME/skills/` 时以该 `name` 为目录名。
+
+## 许可证
+
+[MIT](LICENSE)
