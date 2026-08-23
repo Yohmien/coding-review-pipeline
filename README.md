@@ -8,10 +8,12 @@
 
 `coding-review-pipeline` 是用于项目源码与自动化测试变更的 Codex 编排 skill：主会话负责范围、契约、风险与最终证据，coding 子代理按任务契约机械实施，fresh reviewer 只读审查实际 diff。它不替代项目的 `AGENTS.md` 与测试体系，而是把这些约束接入一条**低消耗、可审计、可恢复**的执行流水线。
 
-| | |
+| ✅ **优势** | 📌 **本仓库的落地方式** |
 |---|---|
-| 编排层 token 降低 30%–50%（真实任务实测） | 全程可审计：每个决定有 ledger 记录，每次验证有指纹 |
-| 550 项确定性测试锁定行为，门禁缺失即 BLOCKED 不静默降级 | 中断秒级恢复：压缩/中断后按固定三步协议续作，不重推导 |
+| 💰 **编排层 token 降低 30%–50%**（真实任务实测） | 渐进式披露 + 程序化等待 + 报告优先探测 |
+| 🔍 **编码全程可审计** | 每个决策有 ledger 记录，每次验证有指纹，完成门禁机械放行 |
+| 🛡️ **质量由确定性保证** | 550 项单元测试锁定行为；门禁缺失即 BLOCKED，绝不静默降级 |
+| ♻️ **中断秒级恢复** | 压缩/中断后按固定三步协议续作（ledger → 报告 → 指纹），不重推导 |
 
 ## 目录
 
@@ -99,16 +101,16 @@ flowchart LR
 
 本流水线的 token 节省全部来自**消除无效功**，每一项都有对应的可审计产物，因此消耗降低的同时验收标准不降反升：
 
-| 机制 | 省掉的无效功 | 可审计产物 |
-|---|---|---|
-| 渐进式披露（主文件 27.6KB，细则十份 references 按需加载） | 每轮对话重复携带全量规则 | 主文件体积与加载清单 |
-| 约束前置拦截（packet 阶段 BLOCKED） | 集成复审才发现方向性漂移后的整轮返工 | CONSTRAINT_MAPPINGS 覆盖校验记录 |
-| 分析笔记落盘（analysis_notes） | 上下文压缩后重走已完成的推导 | ledger 笔记条目 + 恢复三步协议 |
-| 冒烟自动化（executable 场景检查） | 人工推演链路的多轮对话 | scenario_checks 执行记录 |
-| 复验 delta 化 + 缓存指纹 | fix 循环中重复跑未受影响的验证命令 | 命令指纹 + cache_hit 标记 |
-| preflight 索引化 | 同一份 review context 被读两次 | 包文件 + 不超过 200 token 的索引 |
-| 报告优先探测（task_report） | 用大规模 diff 扫描判断子代理进度 | 阶段报告 JSON |
-| 程序化等待（wait_strategy） | 频繁轮询子代理状态 | 单次长等待时长计算记录 |
+| # | 机制 | 省掉的无效功 | 可审计产物 |
+|---|---|---|---|
+| 1 | 渐进式披露：主文件仅载每轮必载内容（27.6KB），细则十份 references 按需读取 | 每轮对话重复携带全量规则 | 主文件体积与加载清单 |
+| 2 | 约束前置拦截：packet 阶段即 BLOCKED | 集成复审才发现方向性漂移后的整轮返工 | CONSTRAINT_MAPPINGS 覆盖校验记录 |
+| 3 | 分析笔记落盘：analysis_notes 增量追加 | 上下文压缩后重走已完成的推导 | ledger 笔记 + 三步恢复协议 |
+| 4 | 冒烟自动化：executable 场景检查 | 人工推演链路的多轮对话 | scenario_checks 执行记录 |
+| 5 | 复验 delta 化 + 缓存指纹 | fix 循环中重复跑未受影响的验证命令 | 命令指纹 + cache_hit 标记 |
+| 6 | preflight 索引化：完整包落盘只传索引 | 同一份 review context 被读两次 | 包文件 + 不超过 200 token 的索引 |
+| 7 | 报告优先探测：task_report 先于 diff | 用大规模 diff 扫描判断子代理进度 | 阶段报告 JSON |
+| 8 | 程序化等待：wait_strategy 计算时长 | 频繁轮询子代理状态 | 单次长等待时长计算记录 |
 
 **实测数据**：对一次真实 Java 改造会话（25 轮、131 次文件变更）的复盘显示，仅约束漂移返工、压缩后重复推导、交互式冒烟三项就占该会话约 40 万推理字符的六成以上——这些正是上表机制直接消除的部分。按中等任务编排层估算，总消耗降低 **30%–50%**；节省的同时每项机制都带 fail-closed 校验（缺失/过期/不一致即 BLOCKED），可审计性与质量同步提升。
 
@@ -148,7 +150,6 @@ flowchart LR
 
 `scripts/review_preflight.py` 在 reviewer 开始前完成 analyzer 探测、finding 归一化、diff 归因、negative coverage 和 P0-P3 上下文整理。可归因的构建、测试、安全或项目配置分析器失败直接阻断；reviewer 负责语义审查，不重复机器检查。
 
-`open-code-review`（`ocr`）只提供额外规则上下文。不可用时记录 `SKIPPED` 并继续，不影响 review verdict。
 
 reviewer 的每条 finding 按 severity（S1 语义 / S2 链路 / S3 健壮性 / S4 风格）与 confidence（verified / probable / speculative）双轴标注：S1/S2 决定 verdict，S4 不阻断 ship，speculative 默认不入报告。核对清单从 packet 的 DECIDED 与 CONSTRAINT_MAPPINGS 机械派生，不使用通用模板。
 
@@ -235,7 +236,6 @@ powershell -ExecutionPolicy Bypass -File scripts/install-deps.ps1
 
 | 依赖 | 角色 | 缺失行为 | 权威来源 | 安装方式 |
 |---|---|---|---|---|
-| `open-code-review`（`ocr` CLI） | review 的 optional rule enrichment | `review_preflight.py` 输出 `ocr.state=skipped` 并继续，绝不 STOP review | [alibaba/open-code-review](https://github.com/alibaba/open-code-review) | `npm install -g @alibaba-group/open-code-review`（需 Node ≥14；要求 Git ≥2.41） |
 | CodeGraph | search-gates 的图谱层 | search-gates 降级 rg 锁定或报告缺失，不假装命中 | [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph) | 官方 install.ps1 / install.sh 或 `npm i -g @colbymchenry/codegraph` |
 
 ### OPTIONAL 依赖：CodeGraph（search-gates 的图谱层）
@@ -264,20 +264,6 @@ codegraph upgrade
 
 缺失时图谱闸门不可用，search-gates 会按失败兜底表降级到 Step 3 rg 锁定（显式路径）或报告缺失，不假装命中；本 skill 不因 CodeGraph 缺失而停止。
 
-### OPTIONAL 依赖：open-code-review（review 的 rule enrichment）
-
-fresh review 的确定性前置是 `scripts/review_preflight.py`（见「典型流程与 review 前置」）。`ocr` 只是该前置之上的 optional rule enrichment：preflight 检测到 `ocr` 时用 `ocr delegate rule` 生成附加规则上下文（`ocr.rule_context`）。它**不是** SKILL.md 目录，不能用 `$skill-installer` 安装；`install-deps` 只检测并提示，不自动全局安装。请按官方链路单独安装：
-
-```bash
-# 需要 Node ≥14（npm 或 pnpm 全局安装均可）
-npm install -g @alibaba-group/open-code-review
-
-# 验证
-ocr delegate rule --help
-```
-
-要求 Git ≥2.41。ocr 不可用时，preflight 输出 `ocr.state=skipped` 并继续，review 照常按 machine findings / coverage / context 完成，绝不因此 STOP；可选给出安装提示，不因 ocr 不可用重新派发 reviewer。
-
 ### 验证安装
 
 ```bash
@@ -296,11 +282,9 @@ ls skills/coding-review-pipeline/references skills/coding-review-pipeline/script
 # 验证 CodeGraph（OPTIONAL；Windows 用 Test-Path .codegraph）
 codegraph status
 
-# 验证 ocr（OPTIONAL；Windows 用 Get-Command ocr）
-ocr delegate --help
 ```
 
-期望输出：`coding-review-pipeline` 与 `contract-executor` 均打印 `Skill is valid!`，`name` 与目录名一致；`contract-executor` 缺失视为安装不完整（fail closed），不得开始编码任务；`codegraph status` 正常返回索引状态（无索引时按 search-gates 的失败路径处理）；`ocr delegate --help` 缺失不阻断安装验证。
+期望输出：`coding-review-pipeline` 与 `contract-executor` 均打印 `Skill is valid!`，`name` 与目录名一致；`contract-executor` 缺失视为安装不完整（fail closed），不得开始编码任务；`codegraph status` 正常返回索引状态（无索引时按 search-gates 的失败路径处理）。
 
 ## 质量与测试
 
@@ -313,7 +297,7 @@ ocr delegate --help
 `references/` 的十份文件随主 skill 一起安装，并按阶段读取：
 
 - **routing-gates.md** — G1-G5 可读契约与正交性约束。
-- **review-routing.md** — `review_preflight.py` 行为口径：detect-and-reuse、统一 finding schema、归因/去重、机器阻断、negative coverage、P0-P3、pmd/checkstyle detect-only、ocr optional。
+- **review-routing.md** — `review_preflight.py` 行为口径：detect-and-reuse、统一 finding schema、归因/去重、机器阻断、negative coverage、P0-P3、pmd/checkstyle detect-only。
 - **run-ledger.md** — 持久 run ledger、run_id 规则、update 写门禁、畸形 ledger 逐命令映射、verification tier。
 - **task-contracts.md** — coder / advisor / reviewer 任务契约与上下文传递规则。
 - **recovery-and-failures.md** — 基线台账、线程回收、中断恢复决策表与 if-then 失败表。
@@ -331,7 +315,7 @@ ocr delegate --help
 
 - CORE 缺失（`search-gates` / `verification-before-completion` / `ponytail` / 内置引用与脚本 / `contract-executor`）→ 报告缺失项并停止，不降级、不找替代。
 - CONDITIONAL 命中条件成立但缺失：G1 命中缺 `grill-with-docs`（或传递的 `grilling` / `domain-modeling`）→ 不进入追问门禁，报告并停止；缺陷修复缺 `systematic-debugging`、可测实现缺 `test-driven-development` → 停止对应流程；G5 命中缺 recovery-and-failures.md → 按内置失败路径处理。
-- OPTIONAL 缺失不阻断：ocr 不可用 → preflight 输出 SKIPPED 并继续 review；目标项目没有 `.codegraph` 索引 → search-gates 图谱闸门不可用，按兜底表降级 rg 锁定或报告缺失，不假装命中。
+- OPTIONAL 缺失不阻断：目标项目没有 `.codegraph` 索引 → search-gates 图谱闸门不可用，按兜底表降级 rg 锁定或报告缺失，不假装命中。
 
 ## 运行注意事项
 
