@@ -201,7 +201,7 @@ reviewer spawn prompt 构造规则（ROLE_LOCK 三要素、禁止二次派发叙
 - fix-first：列出文件、位置、证据和必需修复。
 - rethink：架构或契约需要主会话重新定案。
 
-fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置派后续 coder。rethink 回到探索与计划阶段。任何代码变化后必须重新复验并获取 fresh verdict。
+fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置派后续 coder。rethink 回到探索与计划阶段。有界重探索：fix-first 的原 coder 允许做只读重定位（读 packet 只读依赖清单内的文件、重跑定向测试定位根因），不视为范围扩大、不升级 rethink；但写集、接口契约或验收标准的任何变化仍必须走 BLOCKED 回抛主会话。任何代码变化后必须重新复验并获取 fresh verdict。
 
 单个任务和集成 review 各最多 3 轮；仍不收敛时停止并向用户报告累计证据。独立任务可继续，但不得在未全部 ship 前声明整体完成。reviewer 作用域分层：单边界 task review 只消费该任务的 diff、触及的接口签名和 preflight 索引；integration review 消费跨模块接口契约、各任务 verdict 摘要和最终全量 diff 的统计概览，需要细节时再读取具体文件，不默认全量内联。
 
