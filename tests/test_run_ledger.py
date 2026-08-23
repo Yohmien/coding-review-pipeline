@@ -158,6 +158,7 @@ class TestLedgerInit(unittest.TestCase):
             "plan",
             "baseline",
             "models",
+            "analysis_notes",
             "decisions",
             "tasks",
             "agents",
@@ -186,6 +187,26 @@ class TestLedgerInit(unittest.TestCase):
             with self.subTest(run_id=run_id):
                 with self.assertRaises(crp_common.CrpError):
                     run_ledger.new_ledger(run_id, "/repo")
+
+
+class TestAnalysisNotes(unittest.TestCase):
+    """P2: incremental analysis notes survive compaction via the ledger."""
+
+    def test_new_ledger_has_empty_notes(self):
+        ledger = run_ledger.new_ledger("r1", "/repo")
+        self.assertEqual(ledger["analysis_notes"], [])
+
+    def test_update_appends_notes(self):
+        ledger = run_ledger.new_ledger("r1", "/repo")
+        updated = run_ledger._apply_changes(ledger, {"analysis_notes": [{"topic": "seed-idempotency", "conclusion": "upsert resets status"}]})
+        again = run_ledger._apply_changes(updated, {"analysis_notes": [{"topic": "lock-order", "conclusion": "aggregate-root lock"}]})
+        self.assertEqual(len(again["analysis_notes"]), 2)
+
+    def test_non_list_notes_rejected_on_write(self):
+        ledger = run_ledger.new_ledger("r1", "/repo")
+        ledger["analysis_notes"] = "not-a-list"
+        with self.assertRaises(crp_common.CrpError):
+            run_ledger._validate_ledger(ledger, "r1")
 
 
 class TestRunIdValidation(unittest.TestCase):

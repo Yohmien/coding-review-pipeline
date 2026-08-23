@@ -44,6 +44,7 @@ LEDGER_KEYS = (
     "plan",
     "baseline",
     "models",
+    "analysis_notes",
     "decisions",
     "tasks",
     "agents",
@@ -286,6 +287,7 @@ def new_ledger(
         "plan": plan,
         "baseline": baseline,
         "models": models,
+        "analysis_notes": [],
         "decisions": {},
         "tasks": {},
         "agents": {},
@@ -363,6 +365,9 @@ def _validate_ledger(ledger: dict, expected_run_id: str | None = None) -> None:
             raise CrpError("invalid_input", f"ledger.{key} must be an object", key=key)
     if not isinstance(ledger.get("events"), list):
         raise CrpError("invalid_input", "ledger.events must be a list")
+    notes = ledger.get("analysis_notes")
+    if notes is not None and not isinstance(notes, list):
+        raise CrpError("invalid_input", "ledger.analysis_notes must be a list when present")
 
 
 _SOFT_SHAPE_SECTIONS = ("tasks", "agents", "decisions")
@@ -454,6 +459,8 @@ def _apply_changes(ledger: dict, changes: dict) -> dict:
             ledger[key].update(value)
         elif key == "events" and isinstance(value, list):
             ledger.setdefault("events", []).extend(value)
+        elif key == "analysis_notes" and isinstance(value, list):
+            ledger.setdefault("analysis_notes", []).extend(value)
         else:
             ledger[key] = value
     return ledger

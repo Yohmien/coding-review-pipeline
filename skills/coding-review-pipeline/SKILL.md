@@ -115,6 +115,8 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 输出：change facts、根因证据、已定案接口与边界、允许修改的文件集合。
 
+分析笔记纪律（全阶段适用）：每个阶段转换时，主会话把已确认符号、已判定语义和未决问题以紧凑条目追加写入 canonical ledger 的 analysis_notes（每条 ≤500 token）。单轮推理超过约 30K 字符仍未产出 diff 或笔记时，先把当前分析检查点到 analysis_notes 再继续。中断恢复时从最近笔记续接，不重做已确认判断。
+
 ### 1.5 G1 追问门禁（one-hop）
 
 是否追问由 `scripts/route_context.py` 的 G1 User Decision Gate 决定，可读契约见 [references/routing-gates.md](references/routing-gates.md)：只有输出 `REQUIRES_USER_DECISION` 才路由 grill-with-docs（tools 附带 request_user_input）；多文件、多模块、CodeGraph、rg、工具/测试/阅读数量等一律不是 G1 触发条件。命中后按 grill-with-docs（及传递的 grilling / domain-modeling）执行追问，细节不复制到本 skill；G1 输出 `NONE` 时跳过，直接根据探索证据形成完整计划。
