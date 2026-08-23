@@ -204,6 +204,7 @@ mutation，wait 观察返回无终端结果。唯一允许 `KEEP` / `WAIT`，确
 小套件 foreground_wait（前台运行直接看输出）、中套件 background_file（后台执行读结果文件）、
 大套件 background_poll（后台长轮询）。禁止为探测子代理状态而缩短等待或增加轮询；
 子代理状态以 phase-report（scripts/task_report.py read）为准。
+外层 `functions.exec` 的等待时长必须比最长嵌套等待至少多 30000 ms。
 
 ## 主会话并发调度循环（阶段 5 按需加载）
 
