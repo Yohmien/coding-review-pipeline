@@ -41,6 +41,14 @@ JUDGMENT CALLS: 已执行的本地低风险判断及理由；没有则写 none
 GAPS: 阻塞、规格矛盾、缺失输入、验证缺口或范围外风险；没有则写 none
 ```
 
+### 阶段报告（PHASE REPORT，程序化写入）
+
+coder 在 IMPLEMENT 完成时、VERIFY 结束时，必须通过 scripts/task_report.py write --run-id <id> 追加阶段报告（stdin JSON）：task_id、phase（READ/IMPLEMENT/VERIFY/REPORT）、status（completed/blocked/in_progress）、summary（不超过 2000 字符的核心修改说明）、可选 files_changed/verification/judgment_calls/gaps。主会话复验前先通过 read 子命令读取该报告确认状态，不通过大规模文件变更扫描推断子代理进度。
+
+### 提交信息预备（COMMIT MESSAGE）
+
+代码任务 packet 的 RETURN 之后附一行 COMMIT MESSAGE 建议：type(scope): 一句话核心修改。主会话复验通过后按 SKILL 标准提交规则立即以该信息创建 commit（可微调措辞，不改变 type 与核心描述）；提交是固定动作，不需要用户或 coder 再判断是否提交。
+
 `STATUS: completed` 只表示该局部任务按契约完成，不替代独立 review 或最终集成验证。
 
 ### 共享前言（Shared Preamble）

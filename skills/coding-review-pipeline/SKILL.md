@@ -196,7 +196,7 @@ advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺
 
 每轮 coder 返回后，主会话必须：
 
-1. 检查 git status --short、完整 diff、未跟踪文件和允许范围。
+1. 先读取子代理阶段报告（scripts/task_report.py read --run-id <id> --task-id <tid>）确认其自述状态，再检查 git status --short、完整 diff、未跟踪文件和允许范围；报告与 diff 不一致时以 diff 为准并按范围外变化处理。不得以大规模文件变更扫描代替报告读取。
    存在未跟踪新文件时，先对每个新文件执行 `git add -N <file>`（intent-to-add，仅让 diff 可见）
    再运行 `git diff --check`；不得因此顺手 `git add` 提交。
 2. 发现范围外变化立即停止，不静默归入任务。
@@ -247,7 +247,11 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - 中断恢复时先检查工作树与线程状态，再从最近安全阶段继续；不得未检查就重复派发或覆盖改动。
 - 工具、模型、线程、范围或验证失败按 recovery-and-failures.md 的 if-then 表处理，失败路径不得吞掉。
 
-长时间异步工作只在状态转换时通知用户：`blocked/input-required`、`completed`、`errored`、`fix-first` 或 `ship`。`running` 且无新事实的等待超时不是进度事件：不得发送“仍在运行/继续等待”，不得读取行数、哈希或写集验活，不得催促代理。`wait_agent` 使用至少 600000 ms，coding/review 无需中间结果时优先 900000-1800000 ms；外层 `functions.exec` 比最长嵌套等待至少多 30000 ms。终端 session 的空 `write_stdin` 轮询至少 180000 ms、优先 300000 ms；非空交互输入不应用长等待。
+长时间异步工作只在状态转换时通知用户：`blocked/input-required`、`completed`、`errored`、`fix-first` 或 `ship`。`running` 且无新事实的等待超时不是进度事件：不得发送“仍在运行/继续等待”，不得读取行数、哈希或写集验活，不得催促代理。等待时长与测试执行模式由 `scripts/wait_strategy.py` 程序化决定（输入任务数、涉及文件数与风险等级），主会话不自行估算：单次长等待按脚本输出的 wait_agent_ms 执行；小套件 foreground_wait 直接看输出，中大套件后台执行并读结果文件；外层 `functions.exec` 比最长嵌套等待至少多 30000 ms。终端 session 的空 `write_stdin` 轮询至少 180000 ms、优先 300000 ms；非空交互输入不应用长等待。
+
+## 标准提交规则（固定动作）
+
+代码发生变更时（coder 返回后主会话复验通过、或主会话 DIRECT_PATCH 完成验证），提交是固定动作而非判断项：只要本次 run 产生了项目源码/测试/SQL 变更且通过复验，必须立即创建一个标准 commit 说明修改内容，供后续回滚与会话快速回顾。提交信息格式：`fix|feat|refactor|test(范围): 一句话核心修改`，正文列出关键文件与验证命令结果。禁止询问“是否需要提交”、禁止把多个逻辑变更合并成含糊的单一提交；文档与台账类变更不触发此规则。
 
 ## 完成条件
 

@@ -195,3 +195,12 @@ fixture：advisor 正在检查 SapWorkOrderService 本地查询分支与异常�
 mutation，wait 观察返回无终端结果。唯一允许 `KEEP` / `WAIT`，确定性输出
 `WAIT`，并断言不 close、不 cancel、不 spawn advisor2、不 re-split task、
 不改 plan。
+
+## 等待时长程序化决定（Wait Strategy）
+
+主会话派发后的单次长等待时长不由人工判断，由 `scripts/wait_strategy.py` 按任务数、
+涉及文件数与风险等级（NORMAL/ELEVATED/HIGH）计算，输出 wait_agent_ms 与执行模式；
+下限 600000 ms、上限 1800000 ms。测试套件执行模式同样由该脚本按测试文件数决定：
+小套件 foreground_wait（前台运行直接看输出）、中套件 background_file（后台执行读结果文件）、
+大套件 background_poll（后台长轮询）。禁止为探测子代理状态而缩短等待或增加轮询；
+子代理状态以 phase-report（scripts/task_report.py read）为准。
