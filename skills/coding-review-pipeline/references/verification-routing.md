@@ -74,6 +74,8 @@ fix-first 修正轮的主会话复验按 delta 口径执行：首轮全量；后
 - 场景步骤由主会话在复验阶段逐步执行；不得以"代码逻辑上应该成立"代替实际执行。
 - 场景验证结果与 diff_fingerprint 关联；diff 变化后必须重跑受影响的场景步骤。
 - 每条 scenario check 必须携带 executable 字段，指向可执行的测试名或命令；packet 阶段由 validate_task_packet.py 校验（non_executable_scenario_check 即 BLOCKED）。人工推演只能作为补充证据，不能替代 executable 检查的执行。
+- 语义化硬要求：executable 测试必须断言业务可观察结果——状态迁移（如 outbound_status、事件状态、落箱状态）、对外协议报文关键字段、或持久化数据变更。仅验证未抛异常、纯 mock 调用计数、与业务链路无关的分支重复测试，视为覆盖率驱动的无意义测试，不满足 scenario_checks 要求，reviewer 按 non_executable_scenario_check 同级处理。
+- 场景步骤必须表达业务流迁移：触发动作 → 系统状态变化 → 可观察输出。禁止与端到端链路无关的凑数步骤。
 
 ## MUST 约束映射（Constraint Mapping）
 
