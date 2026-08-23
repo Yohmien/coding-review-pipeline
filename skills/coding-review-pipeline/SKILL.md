@@ -221,8 +221,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - 派发前建立 changed-file baseline，保留已有脏文件和用户修改；具体做法见 recovery-and-failures.md。
 - 已归属、与写集不重叠且无中断/运行代理的用户修改属于 `KNOWN_DIRTY_BASELINE`，不单独触发 recovery。
 - 只回收已完成且无需追问、修复或恢复的线程；先保存任务状态、实际文件清单、证据和 verdict。
-- 中断或上下文压缩恢复时，先从 canonical ledger 读取最近一次 `model_selection` 事件；schema 仍支持时向用户展示四项并请求一行确认，不得重新推荐或重新展开全部选项。
-- 中断恢复时先检查工作树与线程状态，再从最近安全阶段继续；不得未检查就重复派发或覆盖改动。
+- 恢复协议（压缩/中断后按固定顺序执行，禁止通读长上下文找回状态）：① 读 canonical ledger——最近 model_selection（schema 仍支持时展示四项请求一行确认即复用）、analysis_notes 最近条目、各任务最新 verdict 与 fingerprint；② 用 task_report.py read 确认各 active 任务最新阶段报告的 completed/blocked/in_progress 真实位置；③ 核对 git status --short 与 ledger diff_fingerprint，一致则从第一个未闭环阶段继续，不一致先做范围核对再继续。不得未检查就重复派发或覆盖改动。
 - 工具、模型、线程、范围或验证失败按 recovery-and-failures.md 的 if-then 表处理，失败路径不得吞掉。
 
 长时间异步工作只在状态转换时通知用户：`blocked/input-required`、`completed`、`errored`、`fix-first` 或 `ship`。`running` 且无新事实的等待超时不是进度事件：不得发送“仍在运行/继续等待”，不得读取行数、哈希或写集验活，不得催促代理。等待时长与测试执行模式由 `scripts/wait_strategy.py` 程序化决定，主会话不自行估算；模式阈值、公式与上下限以该脚本输出为准（细节见 agent-lifecycle.md）。终端 session 的空 `write_stdin` 轮询至少 180000 ms、优先 300000 ms；非空交互输入不应用长等待。
