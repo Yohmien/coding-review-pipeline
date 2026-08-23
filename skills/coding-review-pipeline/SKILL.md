@@ -108,7 +108,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 ### 1. 探索与定案
 
 1. 用 `scripts/change_facts.py` 收集 change facts（同 run 多次进入时用 `--cache-file/--cache-ttl` 复用，指纹未变直接命中），并检查 AGENTS.md、git status --short 和用户已有改动；多任务需要 facts+路由+任务图三份输出时改用 `scripts/route_all.py` 一次调用取合并 JSON。
-2. 按 search-gates 获取足够上下文；目标在配置或测试文件时再精确读取源码。
+2. 按 search-gates 获取足够上下文；目标在配置或测试文件时再精确读取源码。READ 时由主对话完成 ponytail 阶梯复用判断（本库已有实现 / stdlib / 原生特性 / 已有依赖），结论以权威锚点写入 packet 的 DECIDED 清单——coder 执行既定复用，不自行做复用级判断。
 3. 缺陷先复现并形成根因证据，禁止猜测式修改。
 4. 主会话只定案可由仓库事实、已确认用户决定或既有权威契约唯一确定的接口与边界；出现互斥高影响方案时进入 G1，不得自行选择。
 5. 判定风险等级与任务依赖，列出允许修改的文件集合。
