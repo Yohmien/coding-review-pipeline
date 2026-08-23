@@ -14,3 +14,9 @@
 
 - 进入阶段 3 立即读取 spawn_agent live schema 并写入 ledger（model_schema_snapshot 事件）；用户询问可用模型或给出选择时先对照快照即时判定，不得在用户选择后才首次读取 schema。
 - 首次使用未在本 run 成功派发过的模型组合时，把探针语义合并到该 run 首个正式任务 spawn prompt（首行要求回复 OK 后再执行任务）；返回无 error 且含正常任务产出即视为通过。首个正式派发连续 2 次同一线路级错误失败（协议错误、额度拒绝、运行时不可达）即判定不可用，按 Provider 连续失败降级处理；不得为探针单独消耗一轮派发。
+## 程序化选择请求（model_prompt.py）
+
+主会话不自行措辞请求用户确认。先把 live schema 快照与推荐四项写成 JSON，运行：
+`python scripts/model_prompt.py --schema <snapshot.json> --recommend <recommend.json>`
+脚本输出固定格式的确认块（四项编号推荐 + 完整枚举范围 + 回复示例），原样展示给用户。
+schema 条目格式 `[{"id": "...", "efforts": ["..."]}]`；recommend 键为四个字段名。

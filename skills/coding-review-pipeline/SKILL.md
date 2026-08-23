@@ -59,7 +59,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契约见 [references/routing-gates.md](references/routing-gates.md)）；只加载输出命中的 reference 与 skill，不复制其规则。
 
 - 在形成任何 coder、advisor 或 reviewer 提示前，读取 [references/task-contracts.md](references/task-contracts.md)。
-- verify/complete 阶段或 completion_claim 命中时，读取 [references/verification-routing.md](references/verification-routing.md)；进入阶段 3 或处理模型选择时，读取 [references/model-selection.md](references/model-selection.md)。
+- verify/complete 阶段或 completion_claim 命中时，读取 [references/verification-routing.md](references/verification-routing.md)；进入阶段 3 或处理模型选择时，读取 [references/model-selection.md](references/model-selection.md)。执行任何脚本命令前，从 [references/automation-commands.md](references/automation-commands.md) 复制固定模板替换占位符，不自行拼参数。
 - G5 输出 `required`（incomplete ledger、running agent、dirty baseline、interrupted run、context recovery、unknown mutation 任一成立）时，读取 [references/recovery-and-failures.md](references/recovery-and-failures.md)。
 - 定位结构、调用关系、数据流或影响面时调用 search-gates；CodeGraph 图谱层缺失时由 search-gates 自身降级 rg 锁定，不在本 skill 复制搜索细则。
 - G1 输出 `REQUIRES_USER_DECISION` 时调用 grill-with-docs（传递 grilling / domain-modeling），追问口径见第 1.5 节；G1 输出 `NONE` 时跳过。
@@ -141,7 +141,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 
 ### 3. Live 能力与模型确认
 
-计划确认后：立即读取 spawn_agent schema 并核实四项可选（读不到 live schema 时触发下方 STOP）；紧凑推荐 coding/review model 与 effort 四项请用户确认；确认后写入 canonical ledger（model_selection 事件）。展示覆盖率、结构化输入收口、复用条件、schema 快照与探针合并的完整口径见 [references/model-selection.md](references/model-selection.md)（进入本阶段时加载）。
+计划确认后：立即读取 spawn_agent schema 并核实四项可选（读不到 live schema 时触发下方 STOP）；用 `scripts/model_prompt.py` 生成固定格式确认块请用户确认；确认后写入 canonical ledger（model_selection 事件）。细则见 [references/model-selection.md](references/model-selection.md)（进入本阶段时加载）。
 
 🔴 CHECKPOINT · 🛑 STOP：四项未确认，或 live 工具不支持任一选择时，停止编码并报告缺失能力；不得使用静态候选、静默降级或主会话代写。
 

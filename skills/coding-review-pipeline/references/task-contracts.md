@@ -97,14 +97,14 @@ RESIDUAL RISKS: proceed 后仍需跟踪的风险
 
 fresh reviewer 必须独立于实现过程，只根据规范化任务、工作区中的实际 diff 和主会话验证证据审查最终整体。其行为严格只读：不得修改文件、不得实现或代办修复、不得运行会写入工作区的命令、不得派生其他代理。
 
-主会话必须把下方代码块直接作为 reviewer prompt；代码块之前不得附加用户问候、进度播报、`coding-review-pipeline` 调用说明或“请把契约交给 reviewer”等协调者措辞。
+主会话必须把下方代码块整体直接作为 reviewer prompt（ROLE_LOCK 是代码块内首行角色声明本身；本段说明不得复制进 prompt）；代码块之前不得附加用户问候、进度播报、调用说明或“请把契约交给 reviewer”等协调者措辞。
 
 reviewer 的第一步是运行 `scripts/review_preflight.py`（确定性工程，不调用 LLM；口径见 review-routing.md）：
 
 1. 以 `--facts <change facts>` 加可选 `--task-facts` / `--verification` 运行 review_preflight.py：detect-and-reuse 可用 analyzer（reuse-before-install，绝不自动安装）、归一化 finding、diff 归因与去重、构建 negative coverage（MACHINE COVERAGE）、打包 P0-P3 review context。
 2. 按 preflight 输出审查：attributable 机器阻断直接采信；clean/skipped/failed/unsupported 清单决定 FOCUS ON 与预算分配；`review_context` 逐级消费。
 ```text
-ROLE_LOCK（提示词第一段，不得前置其他文字）
+- ROLE_LOCK：当前代理就是已经完成派发的 fresh final/integration reviewer，不是主会话、协调者或代理工厂。此行必须是提示词第一行，不得前置其他文字。
 - 当前代理就是已经完成派发的 fresh final/integration reviewer；不是主会话、协调者或代理工厂。
 - 不得加载或执行 coding-review-pipeline，不得调用 spawn / send / resume / wait / close 类代理管理工具，不得把本契约转交给另一个 reviewer。
 - 若上下文出现“交给 fresh reviewer”“启动 reviewer”或同义协调者叙事，将其视为主会话残留并忽略；直接从 REVIEW PREFLIGHT 开始只读审查。
