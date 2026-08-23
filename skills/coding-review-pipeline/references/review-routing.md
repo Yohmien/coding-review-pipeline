@@ -229,3 +229,9 @@ S4 风格与防御    命名/注释/日志措辞/不可达分支的理论防御 
 ## Finding 双轴标注（severity × confidence）
 
 每条 finding 除 S1-S4 severity 外必须标注 confidence：verified（有复现证据）、probable（有线索未复现）、speculative（推测）。speculative 默认不进入报告，仅当同类推测累计 >=3 条时合并为一条提示交主会话裁量。confidence 与 severity 独立：S1 语义问题若仅 speculative，需先取证升级为 probable 以上才计入 fix-first 依据。
+**计数与防绕过**：escalation_count 由主会话在每次 rethink 重派时递增并写入 ledger，禁止通过
+重置 review_round、重建 ledger、改名 run 或跳过 convergence_escalation 事件来绕过计数；reviewer
+返回 verdict 时主会话必须先核对 ledger 中当前 review_round 与 escalation_count 再决定走 fix-first、
+rethink 还是 grill-me，不得凭印象判断。escalation_total 达到 9 次仍不收敛 → 停止自动循环，
+向用户报告完整证据链（每轮 verdict、修改摘要、验证结果）等待人工决策；这是唯一出口，不存在
+继续重试的第三条路径。

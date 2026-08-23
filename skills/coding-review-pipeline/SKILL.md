@@ -203,7 +203,7 @@ reviewer spawn prompt 构造规则（ROLE_LOCK 三要素、禁止二次派发叙
 
 fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置派后续 coder。rethink 回到探索与计划阶段。有界重探索：fix-first 的原 coder 允许做只读重定位（读 packet 只读依赖清单内的文件、重跑定向测试定位根因），不视为范围扩大、不升级 rethink；但写集、接口契约或验收标准的任何变化仍必须走 BLOCKED 回抛主会话。任何代码变化后必须重新复验并获取 fresh verdict。
 
-单个任务和集成 review 各最多 3 轮；第 3 轮复审仍有任何待修发现（不论是否同题）→ 主对话 rethink 更严格收窄重派（上限 2 轮）→ 仍失败则 grill-me 追问计划内容问题并刷新该任务轮次为 0 重循环，全程写 ledger convergence_escalation；无法确认歧义随时 grill-me，禁止代码推测式实现（细则见 [references/review-routing.md](references/review-routing.md) 不收敛升级与歧义处理节）。独立任务可继续，但不得在未全部 ship 前声明整体完成。reviewer 作用域分层：task review 只看该任务 diff+接口签名+preflight 索引，integration review 看跨模块契约+verdict 摘要+diff 统计概览。
+单个任务和集成 review 各最多 3 轮；第 3 轮复审仍有任何待修发现（不论是否同题）→ 主对话 rethink 更严格收窄重派（上限 2 轮，escalation_count 记 ledger）→ 仍失败则 grill-me 追问计划内容问题并刷新该任务轮次为 0 重循环；escalation_total 达 9 次仍不收敛 → 停止循环向用户报告完整证据链等人工决策。禁止重置轮次/重建 ledger 绕过计数；无法确认歧义随时 grill-me，禁止代码推测式实现（细则见 [references/review-routing.md](references/review-routing.md) 不收敛升级与歧义处理节）。独立任务可继续，但不得在未全部 ship 前声明整体完成。reviewer 作用域分层：task review 只看该任务 diff+接口签名+preflight 索引，integration review 看跨模块契约+verdict 摘要+diff 统计概览。
 
 输出：fresh verdict（ship / fix-first / rethink）。
 
