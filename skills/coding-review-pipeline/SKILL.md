@@ -203,7 +203,9 @@ reviewer spawn prompt 构造规则（ROLE_LOCK 三要素、禁止二次派发叙
 
 fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置派后续 coder。rethink 回到探索与计划阶段。有界重探索：fix-first 的原 coder 允许做只读重定位（读 packet 只读依赖清单内的文件、重跑定向测试定位根因），不视为范围扩大、不升级 rethink；但写集、接口契约或验收标准的任何变化仍必须走 BLOCKED 回抛主会话。任何代码变化后必须重新复验并获取 fresh verdict。
 
-单个任务和集成 review 各最多 3 轮；仍不收敛时停止并向用户报告累计证据。独立任务可继续，但不得在未全部 ship 前声明整体完成。reviewer 作用域分层：单边界 task review 只消费该任务的 diff、触及的接口签名和 preflight 索引；integration review 消费跨模块接口契约、各任务 verdict 摘要和最终全量 diff 的统计概览，需要细节时再读取具体文件，不默认全量内联。
+单个任务和集成 review 各最多 3 轮。重复编码-复审仍不收敛时强制升级：同一问题位置或同类 S1/S2 发现出现 2 轮 fix 后第 3 轮复审仍报同类问题，必须主对话 rethink——重新探索、重新定案契约后派新 packet，不得把第 3 轮继续消耗在原 coder 的再次修补上。独立任务可继续，但不得在未全部 ship 前声明整体完成。reviewer 作用域分层：单边界 task review 只消费该任务的 diff、触及的接口签名和 preflight 索引；integration review 消费跨模块接口契约、各任务 verdict 摘要和最终全量 diff 的统计概览，需要细节时再读取具体文件，不默认全量内联。
+
+歧义处理硬规则：coder 或 reviewer 遇到无法从仓库事实、packet DECIDED 清单或既有权威契约确认的歧义时，主会话必须调用 grill-me（grill-with-docs，传递 grilling / domain-modeling）向用户追问定案；严禁依据代码阅读自行推测业务语义并猜测实现。推测式修复即使测试全绿也视为无效，发现即回滚重做。
 
 输出：fresh verdict（ship / fix-first / rethink）。
 
