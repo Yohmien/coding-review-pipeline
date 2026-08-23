@@ -171,15 +171,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 | 多任务/跨模块 | 多个互不重叠文件集或明确依赖链 | 按下述调度循环持续填满可用 slot；存在跨任务接口或数据契约依赖时，主会话先核对前驱实际 diff 与既定契约，高风险承诺再交 fresh commitment-boundary advisor，随后解锁下游 coder；全部收口后 fresh integration reviewer |
 | 高风险 | 并发、事务、安全、迁移、公共 API、外部副作用、宽影响重构 | 编码前 fresh commitment-boundary advisor；计划修正后再实施；最后 fresh integration reviewer |
 
-#### 主会话并发调度循环
-
-1. 进入阶段 5，以及任一 coder/reviewer 出现 `blocked`、`completed`、`fix-first` 或 `ship` 时，立即以最新前驱闭包重跑 `task_graph.py`。`READY_CODING = ready - active - waiting_verification - waiting_review - fix_required`；`topological_order` 只表达依赖，不是串行执行顺序。
-2. 计算共享 agent 容量的空闲 slot，从 `READY_CODING` 选择不超过容量的最大两两 parallel-safe 子集；冲突时只从每个冲突分量选一个，并保留所有独立任务。容量不足依次优先：原 coder 的 fix-first、能解锁后继的 task review/coder、最长剩余关键路径、后继数、风险等级、`TASK_ID`。
-3. 同一调度轮发出全部选中 spawn 调用；每次 spawn 返回 agent id 后立即派下一个，不在两个 spawn 之间等待工作结果。某一 spawn 失败只阻塞该任务并继续派发其他独立任务，不得把整轮降级为串行。
-4. coder 返回后主会话立即独立复验；任务 diff 已稳定且与运行中任务无依赖时，立即派 fresh task reviewer，与其他 coder/reviewer 并发。机械叶子通过主会话复验即可解锁后继；要求 task review 的边界任务只有 `ship` 后才计入 task graph 的 completed 集合。
-5. 等待时把全部 active agent id 传入一次长 `wait_agent`，处理最先到达的终态后立刻回到第 1 步补位；不得逐个 agent 串行等待，也不得等待整批 coder 完成后才开始 task review。final integration reviewer 是唯一全局屏障，必须等全部相关任务、fix-first 和最新复验收口。
-
-advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺边界最多一轮完整 advisor 加一轮聚焦复核；聚焦后只剩不改变语义的措辞时由主会话机械收口，不再启动 advisor。advisor 返回 change 时必须标注否决的具体维度；ledger 记录该承诺边界的 converged_dimensions，后续轮次不再重审已收敛维度，第 3 轮起 spawn prompt 只含未收敛维度与上一轮 change 条目，不附计划全文（增量收敛协议）。多任务只对公共契约、状态机、SQL、事务或外部副作用边界做独立 task review；机械叶子任务由主会话复验，最终 integration reviewer 统一收口。coder 只修改授权文件，按 packet 验证并返回实际证据。
+多任务并发调度的五步循环、slot 优先序与 advisor 增量收敛协议（converged_dimensions、第 3 轮聚焦模式）见 [references/agent-lifecycle.md](references/agent-lifecycle.md)，进入阶段 5 或启动承诺边界审查时加载。多任务只对公共契约、状态机、SQL、事务或外部副作用边界做独立 task review；机械叶子任务由主会话复验，最终 integration reviewer 统一收口。coder 只修改授权文件，按 packet 验证并返回实际证据。
 
 输出：按 G2/G4 路由的实施计划与派发指令。
 
