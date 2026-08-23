@@ -127,6 +127,7 @@ VERIFICATION EVIDENCE
 
 REVIEW
 - 核对目标完整性、正确性、边界、安全、数据一致性、兼容性与最小影响面。
+- CHECKLIST DERIVATION：从 packet 的 DECIDED 清单与 CONSTRAINT_MAPPINGS 机械派生核对点——每条定案/映射对应一个「diff 是否遵守该约束」检查项，逐条标注 pass/fail/unverifiable 并附行号证据；不使用通用审查模板替代。
 - 核对跨文件/子任务接口是否衔接，是否有遗漏、冲突、重复或范围外改动。
 - 核验证据是否足以支持交付声明；不得把 coder 自述当作独立证据。
 - 发现问题时给出文件与行号、影响和修复要求，但不实施修复。
@@ -135,7 +136,7 @@ REVIEW
 
 RETURN
 CONCLUSION: ship | fix-first | rethink
-FINDINGS: 按严重度列出可操作发现及证据；没有则写 none
+FINDINGS: 每条含 severity(S1语义/S2链路/S3健壮性/S4风格)、confidence(verified=有复现证据/probable=有线索未复现/speculative=推测)、location(文件:起止行) 三字段；没有则写 none。speculative 级默认不入报告，仅当同类推测累计 >=3 条时合并为一条提示。
 VERIFICATION ASSESSMENT: 已覆盖、失败和缺失证据
 RESIDUAL RISKS: 可交付但仍需披露的风险
 

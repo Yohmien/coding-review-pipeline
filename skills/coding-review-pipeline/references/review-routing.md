@@ -225,3 +225,7 @@ S4 风格与防御    命名/注释/日志措辞/不可达分支的理论防御 
 **强制 rethink 升级**：同类 S1/S2 发现经 2 轮 fix 后第 3 轮复审仍报，必须主对话 rethink——重新探索、重新定案契约后派新 packet，不得把第 3 轮继续消耗在原 coder 的再次修补上。同时检查 packet 是否给 coder 的决策权过高导致编码方向偏移；若是，收窄 DECIDED 清单外的自由度。
 
 **歧义 grill-me 硬规则**：coder 或 reviewer 遇到无法从仓库事实、packet DECIDED 清单或既有权威契约确认的歧义时，主会话必须调用 grill-me（grill-with-docs，传递 grilling / domain-modeling）向用户追问定案；严禁依据代码阅读自行推测业务语义并猜测实现。推测式修复即使测试全绿也视为无效，发现即回滚重做。避免无意义的编码细节追究考核以及编码方向偏移。
+
+## Finding 双轴标注（severity × confidence）
+
+每条 finding 除 S1-S4 severity 外必须标注 confidence：verified（有复现证据）、probable（有线索未复现）、speculative（推测）。speculative 默认不进入报告，仅当同类推测累计 >=3 条时合并为一条提示交主会话裁量。confidence 与 severity 独立：S1 语义问题若仅 speculative，需先取证升级为 probable 以上才计入 fix-first 依据。
