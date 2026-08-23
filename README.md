@@ -6,13 +6,48 @@
 
 <img width="2848" height="852" alt="Coding Review Pipeline 工作流" src="https://github.com/user-attachments/assets/f8e565ab-654b-4420-8da6-eaadf1459d8f" />
 
-`coding-review-pipeline` 是用于项目源码和自动化测试变更的 Codex skill。主会话负责范围、契约、风险和最终证据；coding 子代理按任务契约实施；fresh reviewer 只读审查实际 diff。子代理的完成报告不能替代工作树和命令结果。
+`coding-review-pipeline` 是用于项目源码与自动化测试变更的 Codex 编排 skill：主会话负责范围、契约、风险与最终证据，coding 子代理按任务契约机械实施，fresh reviewer 只读审查实际 diff。它不替代项目的 `AGENTS.md` 与测试体系，而是把这些约束接入一条**低消耗、可审计、可恢复**的执行流水线。
 
-**Token 效率与质量承诺**：相比单会话直接编码，本流水线通过渐进式披露（主文件只载每轮必载内容，阶段细则下沉 `references/` 按需读取）、程序化等待与执行策略、报告优先探测、约束前置拦截等机制，在真实改造任务上实测编排层 token 消耗降低 **30%–50%**；同时以确定性脚本门禁（packet 校验 / 完成门禁 / 复验指纹）保证每一步编码可审计——token 的节省来自消除重复推导与无效探测，而非跳过验证或降低验收标准，因此质量随消耗一起优化而不是此消彼长。
+| | |
+|---|---|
+| 编排层 token 降低 30%–50%（真实任务实测） | 全程可审计：每个决定有 ledger 记录，每次验证有指纹 |
+| 550 项确定性测试锁定行为，门禁缺失即 BLOCKED 不静默降级 | 中断秒级恢复：压缩/中断后按固定三步协议续作，不重推导 |
 
-它不替代项目自身的 `AGENTS.md`、测试体系或代码审查规范，而是把这些约束接入一条可恢复、可验证的执行流程。
+## 目录
 
-## 适用范围
+- [为什么是它](#为什么是它)
+- [快速开始](#快速开始)
+- [适用与不适用](#适用与不适用)
+- [工作流](#工作流)
+- [处理的工程问题](#处理的工程问题)
+- [Token 效率](#token-效率省在哪里为什么质量不降)
+- [五 Gate 路由](#五-gate-路由v2)
+- [What's Inside：确定性组件](#whats-inside确定性组件)
+- [Review 与完成门禁](#review-与完成门禁)
+- [安装](#安装)
+- [质量与测试](#质量与测试)
+- [内置参考文件](#内置参考文件)
+- [依赖缺失时](#依赖缺失时)
+- [许可证](#许可证)
+
+## 为什么是它
+
+让一个强模型直接改代码，常见结局是：方向漂移到第三天才被发现、上下文压缩后已确认的结论被重新推翻、复审纠结命名风格却放过状态机缺陷、修复循环无限消耗 token。单靠提示词约束不了这些——本 skill 把它们变成**确定性脚本门禁**：
+
+- 计划约束 → 测试断言的机械映射：packet 派发前校验每条 MUST 约束都有对应验证条目，缺一条即 BLOCKED。
+- 分析结论落盘：阶段转换时写入 ledger 笔记，压缩后从笔记续接而非重新推导。
+- 复审分级：语义 > 链路 > 健壮性 > 风格，风格类永不阻断 ship，推测类默认不入报告。
+- 不收敛强制升级：同类问题复发立即 rethink 收窄重派（上限 2 轮），仍失败 grill-me 问用户并刷新轮次，9 次总熔断保证必然出口。
+
+## 快速开始
+
+```bash
+npx skills@latest add Yohmien/coding-review-pipeline
+```
+
+勾选 `coding-review-pipeline`、`contract-executor` 及 CORE 依赖（见[依赖安装](#依赖安装)）。装完后在 Codex 里直接描述编码任务即可，流水线自动接管：探索定案 → 计划确认 → 模型选择 → 任务派发 → 独立复验 → fresh review → 完成门禁放行。
+
+## 适用与不适用
 
 - 实现功能、修复缺陷、重构源码或补充自动化测试。
 - 多任务或跨模块改动，需要明确依赖、写集和并发边界。
@@ -89,7 +124,7 @@ flowchart LR
 | G4 Execution | 执行模式（写集相交或有依赖链 → serial） | `single` / `serial` / `parallel-safe` |
 | G5 Recovery | 是否需要恢复（incomplete ledger / running agent / dirty baseline / interrupted run / context recovery / unknown mutation） | `none` / `required`（唯一加载 recovery-and-failures.md 的入口） |
 
-## 确定性组件
+## What's Inside：确定性组件
 
 | 组件 | 职责 |
 |---|---|
@@ -114,6 +149,8 @@ flowchart LR
 `scripts/review_preflight.py` 在 reviewer 开始前完成 analyzer 探测、finding 归一化、diff 归因、negative coverage 和 P0-P3 上下文整理。可归因的构建、测试、安全或项目配置分析器失败直接阻断；reviewer 负责语义审查，不重复机器检查。
 
 `open-code-review`（`ocr`）只提供额外规则上下文。不可用时记录 `SKIPPED` 并继续，不影响 review verdict。
+
+reviewer 的每条 finding 按 severity（S1 语义 / S2 链路 / S3 健壮性 / S4 风格）与 confidence（verified / probable / speculative）双轴标注：S1/S2 决定 verdict，S4 不阻断 ship，speculative 默认不入报告。核对清单从 packet 的 DECIDED 与 CONSTRAINT_MAPPINGS 机械派生，不使用通用模板。
 
 ## 执行边界
 
@@ -332,3 +369,4 @@ ocr delegate --help
 ## 许可证
 
 [MIT](LICENSE)
+- [适用与不适用](#适用与不适用)
