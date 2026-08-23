@@ -33,7 +33,7 @@
     "id": 6,
     "scenario": "fresh review 子代理第一步执行 review_preflight",
     "prompt": "coder 已完成修改，请以 fresh reviewer 身份审查当前工作区的最终 diff。",
-    "expected": "reviewer 第一步运行 scripts/review_preflight.py（detect-and-reuse、归一化、negative coverage、P0-P3 context）；attributable 机器阻断直接采信，clean/skipped/failed/unsupported 决定 FOCUS ON 与预算；ocr 仅为 optional rule enrichment，不可用时输出 SKIPPED 并继续，绝不 STOP；随后按 ship/fix-first/rethink 返回 verdict。"
+    "expected": "reviewer 第一步运行 scripts/review_preflight.py（detect-and-reuse、归一化、negative coverage、P0-P3 context）；attributable 机器阻断直接采信，clean/skipped/failed/unsupported 决定 FOCUS ON 与预算；随后按 ship/fix-first/rethink 返回 verdict。"
   },
   {
     "id": 7,

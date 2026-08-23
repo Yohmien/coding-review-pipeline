@@ -10,7 +10,6 @@ Coverage:
   (build/test) failure, project-configured analyzer hard failure
 - negative coverage: clean / skipped / failed / unsupported + FOCUS ON
 - context packer: P0-P3 tiers with tier/files/estimated_chars/omitted/reason
-- OCR missing -> SKIPPED and continue (never STOP)
 
 Unit tests exercise pure functions directly; CLI tests use a temporary git
 repository and fake analyzer CLIs injected via PATH (never the real machine's
@@ -616,17 +615,6 @@ class TestContextPacker(unittest.TestCase):
             self.assertIsInstance(context["total_estimated_chars"], int)
 
 
-class TestOcr(unittest.TestCase):
-    def test_ocr_missing_is_skipped(self):
-        state = review_preflight.detect_ocr(which_fn=lambda name: None)
-        self.assertEqual(state["state"], "skipped")
-        self.assertIn("not found", state["reason"])
-
-    def test_ocr_available(self):
-        state = review_preflight.detect_ocr(which_fn=lambda name: "/fake/ocr" if name == "ocr" else None)
-        self.assertEqual(state["state"], "available")
-
-
 class TestCli(unittest.TestCase):
     def _run(self, repo, bin_dir, *args):
         env = dict(os.environ)
@@ -752,8 +740,6 @@ class TestCli(unittest.TestCase):
 
         tiers = [tier["tier"] for tier in out["review_context"]["tiers"]]
         self.assertEqual(tiers, ["P0", "P1", "P2", "P3"])
-        self.assertEqual(out["ocr"]["state"], "skipped")
-
     def test_out_index_prints_compact_summary_and_writes_package(self):
         repo = self._repo({"src/App.java": "public class App {}\n"})
         bin_dir = self._tmpdir("crp-review-bin-")
@@ -907,7 +893,7 @@ class TestCli(unittest.TestCase):
         error = json.loads(proc.stderr)
         self.assertEqual(error["error"]["code"], "invalid_input")
 
-    def test_ocr_missing_still_succeeds(self):
+    def test_preflight_succeeds_without_optional_analyzers(self):
         repo = self._repo({"src/App.java": "public class App {}\n"})
         bin_dir = self._tmpdir("crp-review-bin-")
         facts = _facts(repo_root=str(repo), changed_files=["src/App.java"], diff_ranges={})
@@ -916,7 +902,6 @@ class TestCli(unittest.TestCase):
         proc = self._run(repo, bin_dir, "--facts", str(facts_file))
         self.assertEqual(proc.returncode, 0, proc.stderr)
         out = json.loads(proc.stdout)
-        self.assertEqual(out["ocr"]["state"], "skipped")
         self.assertEqual(out["findings"], [])
 
     def test_gitleaks_receives_changed_files_not_full_repo(self):

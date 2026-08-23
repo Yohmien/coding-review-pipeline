@@ -91,8 +91,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 ### OPTIONAL（增强，可缺失）
 
-- `open-code-review`（`ocr` CLI）：optional rule enrichment。来源 [alibaba/open-code-review](https://github.com/alibaba/open-code-review)；安装 `npm install -g @alibaba-group/open-code-review`（需 Node ≥14；要求 Git ≥2.41）。可用性与消费口径见第 7 节。
-- CodeGraph 图谱索引：search-gates 的图谱层。缺失时 search-gates 按自身兜底表降级 rg 锁定（显式路径）或报告缺失，不假装命中。
+ - CodeGraph 图谱索引：search-gates 的图谱层。缺失时 search-gates 按自身兜底表降级 rg 锁定（显式路径）或报告缺失，不假装命中。
 
 ### 安装与验证
 

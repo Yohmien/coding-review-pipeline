@@ -103,8 +103,6 @@ reviewer 的第一步是运行 `scripts/review_preflight.py`（确定性工程�
 
 1. 以 `--facts <change facts>` 加可选 `--task-facts` / `--verification` 运行 review_preflight.py：detect-and-reuse 可用 analyzer（reuse-before-install，绝不自动安装）、归一化 finding、diff 归因与去重、构建 negative coverage（MACHINE COVERAGE）、打包 P0-P3 review context。
 2. 按 preflight 输出审查：attributable 机器阻断直接采信；clean/skipped/failed/unsupported 清单决定 FOCUS ON 与预算分配；`review_context` 逐级消费。
-3. ocr 是 optional rule enrichment：preflight 检测到 `ocr` 时用 `ocr delegate rule` 生成附加规则上下文（`ocr.rule_context`）；不可用时 preflight 输出 `ocr.state=skipped` 并继续，review 照常完成，绝不 STOP、绝不跳过规则审查。
-
 ```text
 ROLE_LOCK（提示词第一段，不得前置其他文字）
 - 当前代理就是已经完成派发的 fresh final/integration reviewer；不是主会话、协调者或代理工厂。
@@ -117,7 +115,6 @@ TASK
 REVIEW PREFLIGHT (第一步，先于一切审查)
 - 运行 `scripts/review_preflight.py --facts <change facts> [--task-facts <path>] [--verification <path>]`。
 - 消费 machine findings、machine_coverage、review_context（P0-P3）。
-- ocr 为 optional rule enrichment：可用时 `ocr.rule_context` 作为附加规则源；不可用输出 `skipped` 并继续，绝不 STOP review。
 
 ACTUAL DIFF
 - 主会话核验后的完整实际 diff 和实际改动文件清单，而非 coder 自报摘要。

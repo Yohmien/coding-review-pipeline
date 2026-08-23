@@ -6,9 +6,7 @@ This module is a WRAP/ADAPTER, not an agent and not a scanner reimplementation.
 It detects analyzers (reuse-before-install, never auto-installing), runs only
 allowed analyzers via their CLIs, normalizes their output into one finding
 schema, diff-filters and attributes findings, deduplicates across sources,
-builds negative coverage (machine coverage), and packs a review-context budget
-(P0-P3). OCR is optional rule enrichment: missing OCR is reported SKIPPED and
-processing continues; it never STOPs review.
+builds negative coverage (machine coverage), and packs a review-context budget.
 
 Machine-readable UTF-8 JSON on stdout; structured errors on stderr. Exit codes
 follow ``crp_common``: 0 ok / 2 invalid_input / 3 policy_blocked / 1
@@ -692,15 +690,6 @@ def pack_review_context(
     }
 
 
-def detect_ocr(which_fn=shutil.which) -> dict[str, object]:
-    """Detect the optional ``ocr`` CLI; missing is SKIPPED, never a STOP."""
-
-    path = which_fn("ocr")
-    if not path:
-        return {"state": "skipped", "reason": "ocr executable not found"}
-    return {"state": "available", "path": path}
-
-
 # Reuse-before-install analyzer registry (levels 1-3 only; never install).
 ANALYZERS: list[dict[str, object]] = [
     {
@@ -1004,39 +993,14 @@ def run_preflight(
         verification_path=verification_path,
         findings=findings,
     )
-    ocr = detect_ocr(which_fn)
-    if ocr["state"] == "available":
-        ocr = _enrich_ocr(ocr, root, facts)
-
     return {
         "repo_root": str(root),
         "analyzers": analyzer_results,
         "findings": findings,
         "machine_coverage": coverage,
         "review_context": context,
-        "ocr": ocr,
         "generated_at": crp_common.utc_timestamp(),
     }
-
-
-def _enrich_ocr(ocr: dict[str, object], root: Path, facts: dict[str, object]) -> dict[str, object]:
-    changed = list(facts.get("changed_files") or []) + list(facts.get("untracked_files") or [])
-    try:
-        proc = subprocess.run(
-            [str(ocr["path"]), "delegate", "rule", *[str(path) for path in changed]],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return {"state": "skipped", "reason": "ocr delegate rule failed"}
-    if proc.returncode != 0:
-        return {"state": "skipped", "reason": f"ocr delegate rule failed (exit {proc.returncode})"}
-    ocr["rule_context"] = proc.stdout[:40_000]
-    return ocr
 
 
 def _load_facts(path: str | None) -> dict[str, object]:

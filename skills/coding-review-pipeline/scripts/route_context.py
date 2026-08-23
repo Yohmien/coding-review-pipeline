@@ -625,8 +625,6 @@ def _route_tools(
         tools.append("codegraph explore")
     if task_facts.get("needs_text_search") is True:
         tools.append("rg")
-    if stage == "review":
-        tools.append("ocr")
     return sorted(set(tools))
 
 

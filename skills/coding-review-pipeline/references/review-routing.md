@@ -18,8 +18,7 @@ pack review context（P0-P3 与预算）
 ```
 
 它绝不重写 ast-grep / Semgrep / Gitleaks / OSV-Scanner / reviewdog / SpotBugs / PMD / ArchUnit /
-Error Prone 的扫描算法，只调用其 CLI 并归一化输出；无 CLI 时输出 SKIPPED 并继续。OCR 只是
-optional rule enrichment：ocr 不可用时输出 SKIPPED 并继续，绝不 STOP review。
+Error Prone 的扫描算法，只调用其 CLI 并归一化输出；无 CLI 时输出 SKIPPED 并继续。
 
 ## Reuse Before Install（五级优先级）
 
