@@ -102,7 +102,12 @@ CHANGE_FACTS_REQUIRED_KEYS = (
     "diff_ranges",
     *HIGH_RISK_CANDIDATE_KEYS,
 )
-CHANGE_FACTS_ALLOWED_KEYS = CHANGE_FACTS_REQUIRED_KEYS + ("generated_at", "schema_version")
+CHANGE_FACTS_ALLOWED_KEYS = CHANGE_FACTS_REQUIRED_KEYS + (
+    "generated_at",
+    "schema_version",
+    "cache_fingerprint",
+    "cache_hit",
+)
 
 _BOOL_TASK_KEYS = (
     "genuine_ambiguity",

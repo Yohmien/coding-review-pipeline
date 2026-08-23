@@ -150,7 +150,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 5. 结构化输入无法容纳全部条目时，先在正文完整展示清单；UI 只放允许数量的优先候选，其余条目通过自由输入完整 ID 或精确 effort 值选择，不得因 UI 限制隐藏或排除任何 live 选项。
 6. 用户已在本会话确认且 schema 仍支持时复用；用户改选、上下文缺失或 schema 变化时重新确认。
 7. 四项确认后立即写入 canonical ledger（`model_selection` 事件，含完整模型 ID、effort、时间戳）。上下文压缩或中断恢复时从 ledger 读回最近一次确认，展示"上次确认的四项是 X/Y/Z/W，schema 仍支持，是否沿用？"；用户一行确认即复用，不得重新走完整第 3 步。
-8. 首次使用一个从未在本 run 中成功派发过的模型组合时，先派一个最小探针任务（prompt 仅含"回复 OK"）验证端到端可达：返回包含 OK 且无 error 即通过，再正式派发。探针连续 2 次失败即判定该组合不可用，按 Provider 连续失败降级处理，不正式派发。
+8. 进入本阶段时立即读取 spawn_agent live schema 并把模型/effort 枚举快照写入 ledger（model_schema_snapshot 事件）；用户询问可用模型或给出选择时先对照快照即时判定，不得在用户选择后才首次读取 schema。首次使用一个从未在本 run 中成功派发过的模型组合时，把探针语义合并到该 run 首个正式任务的 spawn prompt（首行要求回复 OK 后再执行任务）；返回无 error 且含正常任务产出即视为探针通过。首个正式派发连续 2 次以同一线路级错误失败（协议错误、额度拒绝、运行时不可达）即判定该组合不可用，按 Provider 连续失败降级处理，不得为探针单独消耗一轮派发。
 
 🔴 CHECKPOINT · 🛑 STOP：四项未确认，或 live 工具不支持任一选择时，停止编码并报告缺失能力；不得使用静态候选、静默降级或主会话代写。
 
@@ -166,7 +166,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 4. 每个任务声明可写集和必要只读依赖；禁止转发主会话完整对话或其他子代理 raw 对话。
 5. 单文件单点任务保持单任务，不为并行而过度拆分；拆分与并行可行性以 task_graph.py 的 CAN 输出为准。
 6. 可测任务的 RED 必须实际执行测试且因目标行为断言失败；`testCompile`、`cannot find symbol`、测试收集、语法、依赖或环境失败均为 `INVALID_RED`。先修复测试夹具或建立最小可编译壳，直到 `tests_run > 0` 且失败签名符合预期，才允许进入 GREEN。
-7. run 状态只写 canonical ledger；不得另建 `ledger-state`、`task-facts`、`verification-*` 或 `completed-*` 平行事实副本。
+7. run 状态只写 canonical ledger；不得另建 `ledger-state`、`task-facts`、`verification-*` 或 `completed-*` 平行事实副本。任务包单一事实源：packet 与验证记录以 ledger 目录为唯一权威落点，不为可视化或展示目的再生成镜像副本；平台自动生成的投影文件不主动维护或更新。
 
 输出：通过 `validate_task_packet.py` 校验的 coder packet。
 
@@ -188,7 +188,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 4. coder 返回后主会话立即独立复验；任务 diff 已稳定且与运行中任务无依赖时，立即派 fresh task reviewer，与其他 coder/reviewer 并发。机械叶子通过主会话复验即可解锁后继；要求 task review 的边界任务只有 `ship` 后才计入 task graph 的 completed 集合。
 5. 等待时把全部 active agent id 传入一次长 `wait_agent`，处理最先到达的终态后立刻回到第 1 步补位；不得逐个 agent 串行等待，也不得等待整批 coder 完成后才开始 task review。final integration reviewer 是唯一全局屏障，必须等全部相关任务、fix-first 和最新复验收口。
 
-advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺边界最多一轮完整 advisor 加一轮聚焦复核；聚焦后只剩不改变语义的措辞时由主会话机械收口，不再启动 advisor。多任务只对公共契约、状态机、SQL、事务或外部副作用边界做独立 task review；机械叶子任务由主会话复验，最终 integration reviewer 统一收口。coder 只修改授权文件，按 packet 验证并返回实际证据。
+advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺边界最多一轮完整 advisor 加一轮聚焦复核；聚焦后只剩不改变语义的措辞时由主会话机械收口，不再启动 advisor。advisor 返回 change 时必须标注否决的具体维度；ledger 记录该承诺边界的 converged_dimensions，后续轮次不再重审已收敛维度，第 3 轮起 spawn prompt 只含未收敛维度与上一轮 change 条目，不附计划全文（增量收敛协议）。多任务只对公共契约、状态机、SQL、事务或外部副作用边界做独立 task review；机械叶子任务由主会话复验，最终 integration reviewer 统一收口。coder 只修改授权文件，按 packet 验证并返回实际证据。
 
 输出：按 G2/G4 路由的实施计划与派发指令。
 
@@ -225,7 +225,7 @@ reviewer spawn prompt 只包含三要素：`ROLE_LOCK`、preflight 命令行、v
 
 fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置派后续 coder。rethink 回到探索与计划阶段。任何代码变化后必须重新复验并获取 fresh verdict。
 
-单个任务和集成 review 各最多 3 轮；仍不收敛时停止并向用户报告累计证据。独立任务可继续，但不得在未全部 ship 前声明整体完成。
+单个任务和集成 review 各最多 3 轮；仍不收敛时停止并向用户报告累计证据。独立任务可继续，但不得在未全部 ship 前声明整体完成。reviewer 作用域分层：单边界 task review 只消费该任务的 diff、触及的接口签名和 preflight 索引；integration review 消费跨模块接口契约、各任务 verdict 摘要和最终全量 diff 的统计概览，需要细节时再读取具体文件，不默认全量内联。
 
 输出：fresh verdict（ship / fix-first / rethink）。
 

@@ -1081,6 +1081,47 @@ class _CrpArgumentParser(argparse.ArgumentParser):
         raise SystemExit(exit_code("invalid_input"))
 
 
+def _load_cache(cache_file: str | None, cache_key: str, ttl_seconds: int) -> dict | None:
+    """Return cached change facts when the key matches and the entry is fresh."""
+
+    if not cache_file or ttl_seconds <= 0:
+        return None
+    path = Path(cache_file)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict) or data.get("key") != cache_key:
+        return None
+    saved_at = data.get("saved_at")
+    if not isinstance(saved_at, (int, float)) or saved_at < 0:
+        return None
+    import time
+
+    if time.time() - saved_at > ttl_seconds:
+        return None
+    facts = data.get("facts")
+    if not isinstance(facts, dict):
+        return None
+    return {**facts, "cache_hit": True}
+
+
+def _write_cache(cache_file: str | None, cache_key: str, facts: dict) -> None:
+    if not cache_file:
+        return
+    import time
+
+    payload = {
+        "key": cache_key,
+        "saved_at": time.time(),
+        "facts": facts,
+    }
+    try:
+        crp_common.atomic_json_write(cache_file, payload)
+    except OSError:
+        pass  # cache is best-effort; never fail collection on cache IO
+
+
 def main(argv: list[str] | None = None) -> int:
     reconfigure_stdio()
     parser = _CrpArgumentParser(
@@ -1107,9 +1148,29 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="JSON file: {\"tasks\": [{\"id\": \"...\", \"files\": [...]}]}",
     )
+    parser.add_argument(
+        "--cache-file",
+        default=None,
+        help="optional cache JSON path for reuse between pipeline re-entries",
+    )
+    parser.add_argument(
+        "--cache-ttl",
+        type=int,
+        default=600,
+        help="cache validity window in seconds (default 600); 0 disables reuse",
+    )
     args = parser.parse_args(argv)
     try:
+        cache_key = crp_common.hash_json(
+            {"repo": args.repo, "base": args.base, "head": args.head, "write_sets": args.write_sets}
+        )
+        cached = _load_cache(args.cache_file, cache_key, args.cache_ttl)
+        if cached is not None:
+            print(json.dumps(cached, ensure_ascii=False, sort_keys=True, indent=2))
+            return EXIT_OK
         facts = collect_facts(args.repo, args.base, args.head, args.write_sets)
+        facts["cache_fingerprint"] = cache_key
+        _write_cache(args.cache_file, cache_key, facts)
     except CrpError as error:
         emit_error(error)
         return exit_code(error.code)
