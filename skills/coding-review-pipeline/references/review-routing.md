@@ -224,6 +224,8 @@ S4 风格与防御    命名/注释/日志措辞/不可达分支的理论防御 
 
 **不收敛递进协议（轮次升级与刷新）**：任一任务复审进入第 3 轮且仍存在任何待修发现（不论是否与此前同题），必须主对话 rethink——重新探索、更严格收窄派发给编码子代理的内容（检查 packet 决策权是否过高导致编码方向偏移、DECIDED 清单是否不足），重新定案契约后派新 packet；此类 rethink 重派上限 **2 轮**。两轮 rethink 重派后复审仍报问题，立即 grill-me 向用户追问计划内容本身的问题（不依据代码自行推测），取得定案后重新派发并把该任务复审轮次刷新为 0 重新循环。每次 rethink 重派、grill-me 升级与轮次刷新都写入 canonical ledger（convergence_escalation 事件），供恢复与审计。
 
+**同题复发立即升级**：复审发现与上一轮 fix 相同或同类的问题时，不等待第 3 轮——立即触发主对话 rethink（重探索 + 更严格收窄 packet）；存在歧义则同时 grill-me。同类复发说明 coder 决策难度过高而非执行不力：rethink 时必须把复发场景补入 DECIDED 清单或直接给出权威代码锚点，从源头消除 coder 需自行判断的部分。此升级同样计入 escalation_count 与上限。
+
 **歧义 grill-me 硬规则**：coder 或 reviewer 遇到无法从仓库事实、packet DECIDED 清单或既有权威契约确认的歧义时，主会话必须调用 grill-me（grill-with-docs，传递 grilling / domain-modeling）向用户追问定案；严禁依据代码阅读自行推测业务语义并猜测实现。推测式修复即使测试全绿也视为无效，发现即回滚重做。避免无意义的编码细节追究考核以及编码方向偏移。
 
 ## Finding 双轴标注（severity × confidence）
