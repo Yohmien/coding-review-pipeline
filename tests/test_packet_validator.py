@@ -62,6 +62,7 @@ def run_validator(
     decisions: object | None = None,
     tasks: list[dict] | None = None,
     change_facts: dict | None = None,
+    plan_constraints: Path | None = None,
 ) -> tuple[int, dict | None, dict | None]:
     paths: list[Path] = []
     packet_path = _write_json(packet)
@@ -79,6 +80,8 @@ def run_validator(
         facts_path = _write_json(change_facts)
         paths.append(facts_path)
         args += ["--change-facts", str(facts_path)]
+    if plan_constraints is not None:
+        args += ["--plan-constraints", str(plan_constraints)]
     try:
         proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace")
     finally:
@@ -627,6 +630,108 @@ class PacketValidatorCliTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2, proc.stderr)
         error = json.loads(proc.stderr)
         self.assertEqual(error["error"]["code"], "invalid_input")
+
+
+def _write_plan_constraints(constraints: list[dict]) -> Path:
+    fd, name = tempfile.mkstemp(suffix=".json", prefix="crp-plancons-")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(constraints))
+    return Path(name)
+
+
+class PlanConstraintMappingTest(unittest.TestCase):
+    """P1: plan MUST-constraint registry must map to concrete tests per packet."""
+
+    def test_no_registry_skips_mapping_check(self) -> None:
+        code, out, err = run_validator(base_packet())
+        self.assertEqual(code, 0, err)
+
+    def test_missing_mappings_blocked(self) -> None:
+        path = _write_plan_constraints(
+            [{"id": "C-TX", "text": "claim tx commits before device call", "mapped_tests": ["t"]}]
+        )
+        try:
+            code, out, err = run_validator(base_packet(), plan_constraints=path)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(code, 3, err)
+        kinds = [item["kind"] for item in out["evidence"]]
+        self.assertIn("missing_constraint_mappings", kinds)
+
+    def test_partial_mapping_blocked(self) -> None:
+        path = _write_plan_constraints(
+            [
+                {"id": "C-TX", "text": "tx rule", "mapped_tests": ["t1"]},
+                {"id": "C-MISSING", "text": "uncovered rule", "mapped_tests": ["t2"]},
+            ]
+        )
+        packet = base_packet(CONSTRAINT_MAPPINGS={"C-TX": ["tests/test_a.py::test_a"]})
+        try:
+            code, out, err = run_validator(packet, plan_constraints=path)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(code, 3, err)
+        unmapped = [e for e in out["evidence"] if e["kind"] == "unmapped_plan_constraint"]
+        self.assertEqual([e["constraint_id"] for e in unmapped], ["C-MISSING"])
+
+    def test_full_mapping_valid(self) -> None:
+        path = _write_plan_constraints(
+            [
+                {"id": "C-TX", "text": "tx rule", "mapped_tests": ["t1"]},
+                {"id": "C-STAT", "text": "stats rule", "mapped_tests": ["t2"]},
+            ]
+        )
+        packet = base_packet(
+            CONSTRAINT_MAPPINGS={
+                "C-TX": ["tests/test_tx.py::test_tx"],
+                "C-STAT": ["tests/test_stats.py::test_stats"],
+            }
+        )
+        try:
+            code, out, err = run_validator(packet, plan_constraints=path)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(code, 0, err)
+        self.assertTrue(out.get("ok"), out)
+
+    def test_empty_test_list_blocked(self) -> None:
+        path = _write_plan_constraints([{"id": "C-TX", "text": "tx rule", "mapped_tests": ["t1"]}])
+        packet = base_packet(CONSTRAINT_MAPPINGS={"C-TX": []})
+        try:
+            code, out, err = run_validator(packet, plan_constraints=path)
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(code, 3, err)
+        kinds = [item["kind"] for item in out["evidence"]]
+        self.assertIn("invalid_field", kinds)
+
+
+class ScenarioChecksValidationTest(unittest.TestCase):
+    """P3: every scenario check in a packet must be executable."""
+
+    def test_absent_checks_allowed(self) -> None:
+        code, out, err = run_validator(base_packet())
+        self.assertEqual(code, 0, err)
+
+    def test_non_executable_check_blocked(self) -> None:
+        packet = base_packet(SCENARIO_CHECKS=[{"scenario_id": "S1", "description": "manual walk"}])
+        code, out, err = run_validator(packet)
+        self.assertEqual(code, 3, err)
+        kinds = [item["kind"] for item in out["evidence"]]
+        self.assertIn("non_executable_scenario_check", kinds)
+
+    def test_executable_check_valid(self) -> None:
+        packet = base_packet(
+            SCENARIO_CHECKS=[
+                {
+                    "scenario_id": "S1",
+                    "description": "smoke chain",
+                    "executable": "mvn -Dtest=SmokeChainTest test",
+                }
+            ]
+        )
+        code, out, err = run_validator(packet)
+        self.assertEqual(code, 0, err)
 
 
 if __name__ == "__main__":

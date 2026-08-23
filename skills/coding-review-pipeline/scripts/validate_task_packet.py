@@ -340,6 +340,80 @@ def _validate_red_evidence(verification: object, evidence: list[dict]) -> None:
         )
 
 
+def _validate_plan_constraints(plan_constraints: object, evidence: list[dict]) -> None:
+    """Validate optional plan-level MUST-constraint registry entries.
+
+    Each entry must be an object with non-empty string id/text and a list of
+    non-empty string mapped_tests. The registry itself is optional.
+    """
+
+    if plan_constraints is None:
+        return
+    if not isinstance(plan_constraints, list):
+        evidence.append(
+            {"kind": "invalid_field", "field": "PLAN_CONSTRAINTS", "problem": "must be a list when present"}
+        )
+        return
+    seen_ids: set[str] = set()
+    for entry in plan_constraints:
+        if not isinstance(entry, dict):
+            evidence.append(
+                {"kind": "invalid_field", "field": "PLAN_CONSTRAINTS", "problem": "entries must be objects"}
+            )
+            continue
+        cid = entry.get("id")
+        text = entry.get("text")
+        mapped = entry.get("mapped_tests")
+        if not isinstance(cid, str) or not cid.strip():
+            evidence.append(
+                {"kind": "invalid_field", "field": "PLAN_CONSTRAINTS.id", "problem": "must be a non-empty string"}
+            )
+            continue
+        if cid in seen_ids:
+            evidence.append({"kind": "duplicate_plan_constraint", "field": cid})
+            continue
+        seen_ids.add(cid)
+        if not isinstance(text, str) or not text.strip():
+            evidence.append(
+                {"kind": "invalid_field", "field": f"PLAN_CONSTRAINTS.{cid}.text", "problem": "must be a non-empty string"}
+            )
+        if not _is_string_list(mapped, require_nonempty=True):
+            evidence.append(
+                {
+                    "kind": "invalid_field",
+                    "field": f"PLAN_CONSTRAINTS.{cid}.mapped_tests",
+                    "problem": "must be a non-empty list of test names or commands",
+                }
+            )
+
+
+def _validate_scenario_checks(scenario_checks: object, evidence: list[dict]) -> None:
+    """Validate optional SCENARIO_CHECKS entries: each must be executable."""
+
+    if scenario_checks is None:
+        return
+    if not isinstance(scenario_checks, list):
+        evidence.append(
+            {"kind": "invalid_field", "field": "SCENARIO_CHECKS", "problem": "must be a list when present"}
+        )
+        return
+    for index, check in enumerate(scenario_checks):
+        if not isinstance(check, dict):
+            evidence.append(
+                {"kind": "invalid_field", "field": f"SCENARIO_CHECKS[{index}]", "problem": "must be an object"}
+            )
+            continue
+        executable = check.get("executable")
+        if not isinstance(executable, str) or not executable.strip():
+            evidence.append(
+                {
+                    "kind": "non_executable_scenario_check",
+                    "field": f"SCENARIO_CHECKS[{index}]",
+                    "problem": "each scenario check must name an executable test or command",
+                }
+            )
+
+
 def _validate_path_fields(packet: dict, evidence: list[dict]) -> None:
     write_keys: dict[str, str] = {}
     read_keys: dict[str, str] = {}
@@ -396,6 +470,7 @@ def validate_packet(
     decisions: dict[str, dict] | None,
     task_ids: set[str] | None,
     change_facts: dict | None,
+    plan_constraints: list[dict] | None = None,
 ) -> dict:
     evidence: list[dict] = []
     decision_required: list[str] = []
@@ -429,6 +504,8 @@ def validate_packet(
                 }
             )
     _validate_red_evidence(packet.get("VERIFICATION"), evidence)
+    _validate_plan_constraints(packet.get("PLAN_CONSTRAINTS"), evidence)
+    _validate_scenario_checks(packet.get("SCENARIO_CHECKS"), evidence)
     if isinstance(packet.get("WRITE_SET"), list) and not packet["WRITE_SET"]:
         evidence.append(
             {"kind": "invalid_field", "field": "WRITE_SET", "problem": "must contain at least one repo-relative path"}
@@ -551,6 +628,37 @@ def validate_packet(
             "decision_required": sorted(set(decision_required)),
             "evidence": evidence,
         }
+    if plan_constraints:
+        mappings = packet.get("CONSTRAINT_MAPPINGS")
+        if not isinstance(mappings, dict) or not mappings:
+            evidence.append(
+                {
+                    "kind": "missing_constraint_mappings",
+                    "problem": "plan declares MUST constraints; packet must map constraint ids to tests",
+                    "declared_constraints": [c["id"] for c in plan_constraints if isinstance(c, dict) and isinstance(c.get("id"), str)],
+                }
+            )
+        else:
+            declared_ids = {c["id"] for c in plan_constraints if isinstance(c, dict) and isinstance(c.get("id"), str)}
+            mapped_ids = {mid for mid in mappings if isinstance(mid, str)}
+            for cid in sorted(declared_ids - mapped_ids):
+                evidence.append({"kind": "unmapped_plan_constraint", "constraint_id": cid})
+            for cid, tests in mappings.items():
+                if cid in declared_ids and not _is_string_list(tests, require_nonempty=True):
+                    evidence.append(
+                        {
+                            "kind": "invalid_field",
+                            "field": f"CONSTRAINT_MAPPINGS.{cid}",
+                            "problem": "must be a non-empty list of test names or commands",
+                        }
+                    )
+        if evidence:
+            return {
+                "ok": False,
+                "status": "BLOCKED",
+                "decision_required": sorted(set(decision_required)),
+                "evidence": evidence,
+            }
     return {
         "ok": True,
         "status": "VALID",
@@ -570,6 +678,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--decisions", default=None, help="decision registry JSON file (optional)")
     parser.add_argument("--tasks", default=None, help="task graph JSON file (optional)")
     parser.add_argument("--change-facts", default=None, help="change facts JSON file from change_facts.py (optional)")
+    parser.add_argument(
+        "--plan-constraints",
+        default=None,
+        help="plan constraint registry JSON file (optional array of {id,text,mapped_tests})",
+    )
     args = parser.parse_args(argv)
     try:
         packet = _load_json(args.packet, "packet")
@@ -578,7 +691,12 @@ def main(argv: list[str] | None = None) -> int:
         decisions = _load_decisions(args.decisions)
         task_ids = _load_task_ids(args.tasks)
         change_facts = _load_change_facts(args.change_facts)
-        result = validate_packet(packet, decisions, task_ids, change_facts)
+        plan_constraints = None
+        if args.plan_constraints:
+            plan_constraints = _load_json(args.plan_constraints, "plan-constraints")
+            if not isinstance(plan_constraints, list):
+                raise CrpError("invalid_input", "plan constraints file must be a JSON array")
+        result = validate_packet(packet, decisions, task_ids, change_facts, plan_constraints)
     except CrpError as error:
         emit_error(error)
         return exit_code(error.code)

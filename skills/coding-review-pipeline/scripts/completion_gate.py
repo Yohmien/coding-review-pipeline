@@ -215,6 +215,29 @@ def _check_scenario_checks(
                 reasons.append("stale_verification")
 
 
+def _check_constraint_mappings(ledger: dict, reasons: list[str]) -> None:
+    """Fail closed when plan declares MUST constraints but tasks lost mappings.
+
+    Mapping completeness against the registry is enforced at packet validation
+    time; here we only verify that tasks still carry their non-empty
+    constraint_mappings block at completion.
+    """
+    plan = ledger.get("plan")
+    if not isinstance(plan, dict):
+        return
+    if not plan.get("has_must_constraints"):
+        return
+    tasks = ledger.get("tasks")
+    if not isinstance(tasks, dict):
+        return
+    for task in tasks.values():
+        if not isinstance(task, dict):
+            continue
+        mappings = task.get("constraint_mappings")
+        if not isinstance(mappings, dict) or not mappings:
+            reasons.append("missing_constraint_mappings")
+
+
 def _check_tasks(
     ledger: dict,
     planned_ids: set[str] | None,
@@ -357,6 +380,7 @@ def evaluate(ledger: dict, change_facts: object = None) -> dict:
     _check_plan_freshness(ledger, reasons)
     _check_tasks(ledger, planned_ids, current_fp, reasons)
     _check_scenario_checks(ledger, current_fp, reasons)
+    _check_constraint_mappings(ledger, reasons)
     _check_agents(ledger, reasons)
     _check_integration(ledger, current_fp, reasons)
     _check_unknown_files(ledger, change_facts, reasons)

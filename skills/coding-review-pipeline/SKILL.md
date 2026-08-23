@@ -157,7 +157,8 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 ### 4. 生成任务契约
 
 1. 按 task-contracts.md 生成五段 coder packet：目标、文件所有权、接口、约束、验证。
-    以探索阶段（第 1 节第 6 条）向用户询问并确认的冒烟测试场景为唯一权威来源，写入 packet 验证段；格式、判定和 reviewer 审查口径见 [references/verification-routing.md](references/verification-routing.md) 场景验证节。自动化测试全绿但场景未全部执行 = 验证不完整。
+    以探索阶段（第 1 节第 6 条）向用户询问并确认的冒烟测试场景为唯一权威来源，写入 packet 验证段；格式、判定和 reviewer 审查口径见 [references/verification-routing.md](references/verification-routing.md) 场景验证节。自动化测试全绿但场景未全部执行 = 验证不完整。每条场景检查必须携带 executable 字段（指向可执行测试名或命令），人工推演只能作为补充证据。
+    计划声明 MUST 约束时，packet 必须通过 CONSTRAINT_MAPPINGS 把每条约束映射到具体验证条目；validate_task_packet.py --plan-constraints 校验覆盖完整性，缺一条即 BLOCKED。高风险任务（并发、事务、迁移、外部副作用）的计划必须建立约束注册表。
 2. 派发前用 `scripts/validate_task_packet.py` 校验 packet；输出 BLOCKED 时按 evidence 修正，不得绕过派发。
 3. 规格定案所有影响接口、契约、安全和范围的判断；允许 coder 处理局部低风险实现判断，但必须在返回中报告。
 4. 每个任务声明可写集和必要只读依赖；禁止转发主会话完整对话或其他子代理 raw 对话。

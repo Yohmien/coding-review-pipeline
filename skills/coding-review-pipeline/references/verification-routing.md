@@ -69,6 +69,11 @@
 - 自动化测试全绿但 `scenario_checks` 缺失或 `all_pass != true` 时，视为验证不完整，completion_gate 输出 `BLOCKED`。
 - 场景步骤由主会话在复验阶段逐步执行；不得以"代码逻辑上应该成立"代替实际执行。
 - 场景验证结果与 diff_fingerprint 关联；diff 变化后必须重跑受影响的场景步骤。
+- 每条 scenario check 必须携带 executable 字段，指向可执行的测试名或命令；packet 阶段由 validate_task_packet.py 校验（non_executable_scenario_check 即 BLOCKED）。人工推演只能作为补充证据，不能替代 executable 检查的执行。
+
+## MUST 约束映射（Constraint Mapping）
+
+计划声明 MUST/关键约束时，主会话在阶段 4 建立约束注册表并写入每个 packet 的 CONSTRAINT_MAPPINGS：约束 id → 具体验证条目。validate_task_packet.py --plan-constraints 校验覆盖完整性；completion_gate 在收尾时复核任务仍携带非空 constraint_mappings（plan.has_must_constraints=true 时缺失输出 missing_constraint_mappings）。
 
 ## 未跟踪文件
 

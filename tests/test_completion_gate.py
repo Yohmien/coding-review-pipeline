@@ -124,6 +124,20 @@ class TestEvaluate(unittest.TestCase):
         result = completion_gate.evaluate(ledger, change_facts=facts)
         self.assertEqual(result, {"conclusion": "COMPLETE_ALLOWED"})
 
+    def test_must_constraints_without_task_mappings_block(self):
+        ledger, facts = _green()
+        ledger["plan"]["has_must_constraints"] = True
+        result = completion_gate.evaluate(ledger, change_facts=facts)
+        self.assertEqual(result["conclusion"], "BLOCKED")
+        self.assertIn("missing_constraint_mappings", result["reasons"])
+
+    def test_must_constraints_with_mappings_allow(self):
+        ledger, facts = _green()
+        ledger["plan"]["has_must_constraints"] = True
+        ledger["tasks"]["T1"]["constraint_mappings"] = {"C-TX": ["tests/test_tx.py::test_tx"]}
+        result = completion_gate.evaluate(ledger, change_facts=facts)
+        self.assertEqual(result, {"conclusion": "COMPLETE_ALLOWED"})
+
     def test_stale_review_blocks(self):
         ledger, facts = _green()
         ledger["tasks"]["T1"]["verdict_diff_fingerprint"] = "stale"
