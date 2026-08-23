@@ -206,3 +206,17 @@ analyzer 缺失、失败、不支持均为非致命：输出 SKIPPED/failed/unsu
   归一化正交。
 - `run_ledger.py`：持久 run ledger 与 verification router；`--verification` 记录交给
   `review_preflight.py` 判 build/test failure 机器阻断。
+## Finding 分级与 verdict 优先序（复审时加载）
+
+finding 按四级归类，verdict 由最高级别决定，不按数量累计：
+
+```text
+S1 语义正确性    业务规则/状态迁移/数据一致性与已定案契约不符 → fix-first 或 rethink
+S2 流程链路      调用顺序/事务边界/重试恢复路径存在真实断裂 → fix-first
+S3 健壮性        真实可达输入的边界缺陷（有复现路径才计）→ fix-first 或 P2 备注
+S4 风格与防御    命名/注释/日志措辞/不可达分支的理论防御 → 不阻断 ship，记 P3 备注
+```
+
+判定纪律：复审优先验证语义正确性与流程链路正确无错误；S4 类发现不得作为 fix-first 的唯
+一理由，也不得因 S4 清单长而拉低 verdict。理论风险必须给出真实可达路径才能计入 S3；给
+不出路径的归入 S4。同一位置重复出现且已有 ledger 记录的 S4 类意见不再重复提出。
