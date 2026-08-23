@@ -8,6 +8,8 @@
 
 `coding-review-pipeline` 是用于项目源码和自动化测试变更的 Codex skill。主会话负责范围、契约、风险和最终证据；coding 子代理按任务契约实施；fresh reviewer 只读审查实际 diff。子代理的完成报告不能替代工作树和命令结果。
 
+**Token 效率与质量承诺**：相比单会话直接编码，本流水线通过渐进式披露（主文件只载每轮必载内容，阶段细则下沉 `references/` 按需读取）、程序化等待与执行策略、报告优先探测、约束前置拦截等机制，在真实改造任务上实测编排层 token 消耗降低 **30%–50%**；同时以确定性脚本门禁（packet 校验 / 完成门禁 / 复验指纹）保证每一步编码可审计——token 的节省来自消除重复推导与无效探测，而非跳过验证或降低验收标准，因此质量随消耗一起优化而不是此消彼长。
+
 它不替代项目自身的 `AGENTS.md`、测试体系或代码审查规范，而是把这些约束接入一条可恢复、可验证的执行流程。
 
 ## 适用范围
@@ -51,6 +53,29 @@ flowchart LR
 | coder 自报完成但没有独立证据 | 主会话检查实际 diff 并重跑验证 |
 | review 被实现过程污染 | 每次使用 fresh、只读 reviewer，diff 变化后旧 verdict 失效 |
 | 长任务重复规划或频繁轮询 | 从已确认检查点继续；无状态变化的异步等待保持静默 |
+| 计划 MUST 约束在集成复审才红灯 | packet 校验强制把每条约束映射到具体测试，缺失即 BLOCKED；completion_gate 收尾复核映射仍在 |
+| 上下文压缩后重新推导已定结论 | analysis_notes 增量落盘 + 恢复协议固定三步（ledger → 报告 → 指纹核对），不读长上下文 |
+| 冒烟测试沦为凑覆盖率 | 场景检查必须 executable 且断言业务可观察结果；MySQL 项目数据源真实库采样优先 |
+| coder 对分支语义自行猜测 | 高风险 packet 必须带 DECIDED 决策清单；未覆盖的语义级选择 BLOCKED 回抛而非猜 |
+| 复审纠结风格细节放过语义缺陷 | finding 四级分级（语义>链路>健壮性>风格）× confidence 双轴；S4 不阻断 ship，speculative 默认不入报告 |
+| 修复循环不收敛无限消耗 | 同题复发立即 rethink 收窄重派（上限2轮）；仍失败 grill-me 刷新轮次；9 次总熔断强制人工介入 |
+
+## Token 效率：省在哪里，为什么质量不降
+
+本流水线的 token 节省全部来自**消除无效功**，每一项都有对应的可审计产物，因此消耗降低的同时验收标准不降反升：
+
+| 机制 | 省掉的无效功 | 可审计产物 |
+|---|---|---|
+| 渐进式披露（主文件 27.6KB，细则十份 references 按需加载） | 每轮对话重复携带全量规则 | 主文件体积与加载清单 |
+| 约束前置拦截（packet 阶段 BLOCKED） | 集成复审才发现方向性漂移后的整轮返工 | CONSTRAINT_MAPPINGS 覆盖校验记录 |
+| 分析笔记落盘（analysis_notes） | 上下文压缩后重走已完成的推导 | ledger 笔记条目 + 恢复三步协议 |
+| 冒烟自动化（executable 场景检查） | 人工推演链路的多轮对话 | scenario_checks 执行记录 |
+| 复验 delta 化 + 缓存指纹 | fix 循环中重复跑未受影响的验证命令 | 命令指纹 + cache_hit 标记 |
+| preflight 索引化 | 同一份 review context 被读两次 | 包文件 + 不超过 200 token 的索引 |
+| 报告优先探测（task_report） | 用大规模 diff 扫描判断子代理进度 | 阶段报告 JSON |
+| 程序化等待（wait_strategy） | 频繁轮询子代理状态 | 单次长等待时长计算记录 |
+
+**实测数据**：对一次真实 Java 改造会话（25 轮、131 次文件变更）的复盘显示，仅约束漂移返工、压缩后重复推导、交互式冒烟三项就占该会话约 40 万推理字符的六成以上——这些正是上表机制直接消除的部分。按中等任务编排层估算，总消耗降低 **30%–50%**；节省的同时每项机制都带 fail-closed 校验（缺失/过期/不一致即 BLOCKED），可审计性与质量同步提升。
 
 ## 五 Gate 路由（V2）
 
@@ -77,9 +102,12 @@ flowchart LR
 | `scripts/task_convergence.py` | task 级收敛：CONTINUE_FIX / ENTER_RETHINK / SHIP / STOP / TASK_ESCALATION_REQUIRED 等 7 routes |
 | `scripts/review_preflight.py` | review 确定性前置：detect-and-reuse、归一化、diff 归因、negative coverage、P0-P3 context |
 | `scripts/completion_gate.py` | 完成门禁：COMPLETE_ALLOWED / BLOCKED + 确定性 reasons（invalid_plan / plan_stale 等） |
+| `scripts/route_all.py` | 合并路由入口：change_facts → route_context → task_graph 单次调用输出合并 JSON，消除三次重叠解析 |
+| `scripts/wait_strategy.py` | 程序化等待与执行策略：按任务数/文件数/风险等级计算 wait_agent 时长；按测试文件数选前台/后台/长轮询模式 |
+| `scripts/task_report.py` | 子代理阶段报告的程序化写入/读取：coder 追加阶段摘要，主会话读报告确认状态而非扫描 diff |
 | `skills/contract-executor`（兄弟 skill） | coding 子代理的机械执行状态机（READ → IMPLEMENT → VERIFY → REPORT） |
 
-全部组件行为由 `tests/` 的 510 项单元测试锁定（见「质量与测试」）。
+全部组件行为由 `tests/` 的 16 个模块、**550 项单元测试**锁定（见「质量与测试」）。
 
 ## Review 与完成门禁
 
@@ -239,13 +267,13 @@ ocr delegate --help
 
 ## 质量与测试
 
-- `tests/` 共 11 个测试模块、**510 项单元测试**，覆盖全部确定性组件与契约执行器：`python -m unittest` 全绿。
+- `tests/` 共 16 个测试模块、**550 项单元测试**，覆盖全部确定性组件与契约执行器：`python -m unittest` 全绿。
 - `scripts/validate.py` 校验 skill 目录的 frontmatter 与结构；CI（`.github/workflows/validate.yml`）对 `skills/` 与 `vendor/` 持续跑同一校验。
-- `test-prompts.json` 的 8 个场景锁定首次响应门禁、只读 review、live schema 复用和 reviewer 角色隔离等行为。
+- `test-prompts.json` 的 14 个场景锁定首次响应门禁、只读 review、live schema 复用、reviewer 角色隔离、阶段报告确认、程序化等待策略与固定提交规则等行为。
 
 ## 内置参考文件
 
-`references/` 的九份文件随主 skill 一起安装，并按阶段读取：
+`references/` 的十份文件随主 skill 一起安装，并按阶段读取：
 
 - **routing-gates.md** — G1-G5 可读契约与正交性约束。
 - **review-routing.md** — `review_preflight.py` 行为口径：detect-and-reuse、统一 finding schema、归因/去重、机器阻断、negative coverage、P0-P3、pmd/checkstyle detect-only、ocr optional。
@@ -256,6 +284,7 @@ ocr delegate --help
 - **task-convergence.md** — task 级收敛路由与 failure context capsule。
 - **task-right-sizing.md** — Task 定义与拆分算法（配套 task_graph.py）。
 - **verification-routing.md** — verification tier 路由与验证记录规则。
+ - **model-selection.md** — 阶段 3 模型确认细则：展示覆盖率、结构化输入收口、复用条件、schema 快照与探针合并。
 
 `scripts/` 目录是确定性组件（见「确定性组件」表），与 references 同等重要：任一缺失都按 recovery-and-failures.md 的失败路径处理，不继续派发。
 
@@ -285,8 +314,8 @@ ocr delegate --help
 │   │   ├── SKILL.md
 │   │   ├── test-prompts.json
 │   │   ├── agents/openai.yaml
-│   │   ├── references/            ← 九份内置引用（routing-gates / review-routing / run-ledger / task-contracts / recovery-and-failures / agent-lifecycle / task-convergence / task-right-sizing / verification-routing）
-│   │   └── scripts/               ← 确定性组件（change_facts / route_context / task_graph / validate_task_packet / run_ledger / agent_lifecycle / task_convergence / review_preflight / completion_gate / crp_common）
+│   │   ├── references/            ← 十份内置引用（routing-gates / review-routing / run-ledger / task-contracts / recovery-and-failures / agent-lifecycle / task-convergence / task-right-sizing / verification-routing / model-selection）
+│   │   └── scripts/               ← 确定性组件（change_facts / route_context / task_graph / route_all / validate_task_packet / run_ledger / wait_strategy / task_report / agent_lifecycle / task_convergence / review_preflight / completion_gate / crp_common）
 │   └── contract-executor/         ← 兄弟 skill：coding 子代理机械执行（须同步安装）
 ├── vendor/skills/                 ← 随本仓库开源的依赖副本
 │   └── search-gates/
@@ -294,7 +323,7 @@ ocr delegate --help
 │   ├── install-deps.sh            ← 一键安装全部依赖（含 vendor）
 │   ├── install-deps.ps1           ← Windows 等价脚本
 │   └── validate.py                ← 校验 skill 目录 frontmatter
-├── tests/                         ← 确定性组件全量回归测试（11 模块 / 510 项）
+├── tests/                         ← 确定性组件全量回归测试（16 模块 / 550 项）
 └── .github/workflows/validate.yml ← CI：对 skills/ 与 vendor/ 跑 validate.py
 ```
 
