@@ -106,7 +106,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 ### 1. 探索与定案
 
-1. 用 `scripts/change_facts.py` 收集 change facts，并检查 AGENTS.md、git status --short 和用户已有改动。
+1. 用 `scripts/change_facts.py` 收集 change facts（同 run 多次进入时用 `--cache-file/--cache-ttl` 复用，指纹未变直接命中），并检查 AGENTS.md、git status --short 和用户已有改动；多任务需要 facts+路由+任务图三份输出时改用 `scripts/route_all.py` 一次调用取合并 JSON。
 2. 按 search-gates 获取足够上下文；目标在配置或测试文件时再精确读取源码。
 3. 缺陷先复现并形成根因证据，禁止猜测式修改。
 4. 主会话只定案可由仓库事实、已确认用户决定或既有权威契约唯一确定的接口与边界；出现互斥高影响方案时进入 G1，不得自行选择。
@@ -225,7 +225,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - 中断恢复时先检查工作树与线程状态，再从最近安全阶段继续；不得未检查就重复派发或覆盖改动。
 - 工具、模型、线程、范围或验证失败按 recovery-and-failures.md 的 if-then 表处理，失败路径不得吞掉。
 
-长时间异步工作只在状态转换时通知用户：`blocked/input-required`、`completed`、`errored`、`fix-first` 或 `ship`。`running` 且无新事实的等待超时不是进度事件：不得发送“仍在运行/继续等待”，不得读取行数、哈希或写集验活，不得催促代理。等待时长与测试执行模式由 `scripts/wait_strategy.py` 程序化决定（输入任务数、涉及文件数与风险等级），主会话不自行估算：单次长等待按脚本输出的 wait_agent_ms 执行；小套件 foreground_wait 直接看输出，中大套件后台执行并读结果文件；外层 `functions.exec` 比最长嵌套等待至少多 30000 ms。终端 session 的空 `write_stdin` 轮询至少 180000 ms、优先 300000 ms；非空交互输入不应用长等待。
+长时间异步工作只在状态转换时通知用户：`blocked/input-required`、`completed`、`errored`、`fix-first` 或 `ship`。`running` 且无新事实的等待超时不是进度事件：不得发送“仍在运行/继续等待”，不得读取行数、哈希或写集验活，不得催促代理。等待时长与测试执行模式由 `scripts/wait_strategy.py` 程序化决定，主会话不自行估算；模式阈值、公式与上下限以该脚本输出为准（细节见 agent-lifecycle.md）。终端 session 的空 `write_stdin` 轮询至少 180000 ms、优先 300000 ms；非空交互输入不应用长等待。
 
 ## 标准提交规则（固定动作）
 
