@@ -64,5 +64,23 @@
     "scenario": "上下文压缩后恢复模型选择",
     "prompt": "对话被压缩了，请继续执行。",
     "expected": "从 canonical ledger 读取最近一次 model_selection 事件；schema 仍支持时展示上次确认的四项并请求一行确认即复用，不重新推荐或展开全部选项。"
+  },
+  {
+    "id": 12,
+    "scenario": "coder 完成后主会话确认其状态",
+    "prompt": "T03 coder 报告完成了，帮我确认它的实际状态再派 reviewer。",
+    "expected": "先 task_report.py read 读最新阶段报告确认自述状态与摘要，再做 git status/diff 复验；报告与 diff 不一致以 diff 为准；不通过大规模文件变更扫描推断子代理进度。"
+  },
+  {
+    "id": 13,
+    "scenario": "测试套件较大时的执行方式与等待时长",
+    "prompt": "这个模块有 60 个测试文件，改完之后怎么跑验证？子代理要等多久？",
+    "expected": "执行模式与等待时长由 wait_strategy.py 程序化决定：60 文件属 background_poll（后台长轮询读结果文件），等待时长按任务数/文件数/风险等级计算并夹在上下限内；主会话不自行估算也不频繁探测。"
+  },
+  {
+    "id": 14,
+    "scenario": "复验通过后是否提交",
+    "prompt": "coder 的修复我已经复核过了，接下来要不要提交？还是等最后一起？",
+    "expected": "提交是固定动作不是判断项：代码变更且复验通过即按标准提交规则立即 commit（type(scope): 核心修改 + 关键文件与验证结果），不询问用户、不等最后合并；文档与台账变更不触发。"
   }
 ]

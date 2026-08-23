@@ -58,7 +58,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契约见 [references/routing-gates.md](references/routing-gates.md)）；只加载输出命中的 reference 与 skill，不复制其规则。
 
 - 在形成任何 coder、advisor 或 reviewer 提示前，读取 [references/task-contracts.md](references/task-contracts.md)。
-- verify/complete 阶段或 completion_claim 命中时，读取 [references/verification-routing.md](references/verification-routing.md)。
+- verify/complete 阶段或 completion_claim 命中时，读取 [references/verification-routing.md](references/verification-routing.md)；进入阶段 3 或处理模型选择时，读取 [references/model-selection.md](references/model-selection.md)。
 - G5 输出 `required`（incomplete ledger、running agent、dirty baseline、interrupted run、context recovery、unknown mutation 任一成立）时，读取 [references/recovery-and-failures.md](references/recovery-and-failures.md)。
 - 定位结构、调用关系、数据流或影响面时调用 search-gates；CodeGraph 图谱层缺失时由 search-gates 自身降级 rg 锁定，不在本 skill 复制搜索细则。
 - G1 输出 `REQUIRES_USER_DECISION` 时调用 grill-with-docs（传递 grilling / domain-modeling），追问口径见第 1.5 节；G1 输出 `NONE` 时跳过。
@@ -106,7 +106,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 
 ### 1. 探索与定案
 
-1. 用 `scripts/change_facts.py` 收集 change facts，并检查 AGENTS.md、git status --short 和用户已有改动。
+1. 用 `scripts/change_facts.py` 收集 change facts（同 run 多次进入时用 `--cache-file/--cache-ttl` 复用，指纹未变直接命中），并检查 AGENTS.md、git status --short 和用户已有改动；多任务需要 facts+路由+任务图三份输出时改用 `scripts/route_all.py` 一次调用取合并 JSON。
 2. 按 search-gates 获取足够上下文；目标在配置或测试文件时再精确读取源码。
 3. 缺陷先复现并形成根因证据，禁止猜测式修改。
 4. 主会话只定案可由仓库事实、已确认用户决定或既有权威契约唯一确定的接口与边界；出现互斥高影响方案时进入 G1，不得自行选择。
@@ -141,16 +141,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 
 ### 3. Live 能力与模型确认
 
-计划确认后：
-
-1. 从当前 spawn_agent schema 读取模型与 reasoning_effort 枚举，并核实可显式传递所选值；读不到 live schema（spawn_agent 工具缺失、枚举为空或读取失败）时同样触发 🔴 CHECKPOINT · 🛑 STOP：报告缺失能力，不得回退到历史记忆、静态清单或上次会话记录猜测。
-2. 依据已确认计划的复杂度，先紧凑推荐 coding model、review model、coding effort、review effort 四项；模型使用 live schema 中的完整 ID，effort 使用精确枚举值。
-3. 在请求选择前检查展示覆盖率：若当前推荐与候选未覆盖全部模型条目或全部 effort 条目，紧凑展示所有模型完整 ID、effort 并集，以及每个模型支持的 effort；已覆盖时不重复展开。
-4. 请用户确认四项。自由文本可一次填写；使用结构化输入时，以当前 schema 为准，用最少轮次收齐四项，每题必须使用允许的最大显式选项数，并把推荐项置顶。
-5. 结构化输入无法容纳全部条目时，先在正文完整展示清单；UI 只放允许数量的优先候选，其余条目通过自由输入完整 ID 或精确 effort 值选择，不得因 UI 限制隐藏或排除任何 live 选项。
-6. 用户已在本会话确认且 schema 仍支持时复用；用户改选、上下文缺失或 schema 变化时重新确认。
-7. 四项确认后立即写入 canonical ledger（`model_selection` 事件，含完整模型 ID、effort、时间戳）。上下文压缩或中断恢复时从 ledger 读回最近一次确认，展示"上次确认的四项是 X/Y/Z/W，schema 仍支持，是否沿用？"；用户一行确认即复用，不得重新走完整第 3 步。
-8. 进入本阶段时立即读取 spawn_agent live schema 并把模型/effort 枚举快照写入 ledger（model_schema_snapshot 事件）；用户询问可用模型或给出选择时先对照快照即时判定，不得在用户选择后才首次读取 schema。首次使用一个从未在本 run 中成功派发过的模型组合时，把探针语义合并到该 run 首个正式任务的 spawn prompt（首行要求回复 OK 后再执行任务）；返回无 error 且含正常任务产出即视为探针通过。首个正式派发连续 2 次以同一线路级错误失败（协议错误、额度拒绝、运行时不可达）即判定该组合不可用，按 Provider 连续失败降级处理，不得为探针单独消耗一轮派发。
+计划确认后：立即读取 spawn_agent schema 并核实四项可选（读不到 live schema 时触发下方 STOP）；紧凑推荐 coding/review model 与 effort 四项请用户确认；确认后写入 canonical ledger（model_selection 事件）。展示覆盖率、结构化输入收口、复用条件、schema 快照与探针合并的完整口径见 [references/model-selection.md](references/model-selection.md)（进入本阶段时加载）。
 
 🔴 CHECKPOINT · 🛑 STOP：四项未确认，或 live 工具不支持任一选择时，停止编码并报告缺失能力；不得使用静态候选、静默降级或主会话代写。
 
@@ -180,15 +171,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 | 多任务/跨模块 | 多个互不重叠文件集或明确依赖链 | 按下述调度循环持续填满可用 slot；存在跨任务接口或数据契约依赖时，主会话先核对前驱实际 diff 与既定契约，高风险承诺再交 fresh commitment-boundary advisor，随后解锁下游 coder；全部收口后 fresh integration reviewer |
 | 高风险 | 并发、事务、安全、迁移、公共 API、外部副作用、宽影响重构 | 编码前 fresh commitment-boundary advisor；计划修正后再实施；最后 fresh integration reviewer |
 
-#### 主会话并发调度循环
-
-1. 进入阶段 5，以及任一 coder/reviewer 出现 `blocked`、`completed`、`fix-first` 或 `ship` 时，立即以最新前驱闭包重跑 `task_graph.py`。`READY_CODING = ready - active - waiting_verification - waiting_review - fix_required`；`topological_order` 只表达依赖，不是串行执行顺序。
-2. 计算共享 agent 容量的空闲 slot，从 `READY_CODING` 选择不超过容量的最大两两 parallel-safe 子集；冲突时只从每个冲突分量选一个，并保留所有独立任务。容量不足依次优先：原 coder 的 fix-first、能解锁后继的 task review/coder、最长剩余关键路径、后继数、风险等级、`TASK_ID`。
-3. 同一调度轮发出全部选中 spawn 调用；每次 spawn 返回 agent id 后立即派下一个，不在两个 spawn 之间等待工作结果。某一 spawn 失败只阻塞该任务并继续派发其他独立任务，不得把整轮降级为串行。
-4. coder 返回后主会话立即独立复验；任务 diff 已稳定且与运行中任务无依赖时，立即派 fresh task reviewer，与其他 coder/reviewer 并发。机械叶子通过主会话复验即可解锁后继；要求 task review 的边界任务只有 `ship` 后才计入 task graph 的 completed 集合。
-5. 等待时把全部 active agent id 传入一次长 `wait_agent`，处理最先到达的终态后立刻回到第 1 步补位；不得逐个 agent 串行等待，也不得等待整批 coder 完成后才开始 task review。final integration reviewer 是唯一全局屏障，必须等全部相关任务、fix-first 和最新复验收口。
-
-advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺边界最多一轮完整 advisor 加一轮聚焦复核；聚焦后只剩不改变语义的措辞时由主会话机械收口，不再启动 advisor。advisor 返回 change 时必须标注否决的具体维度；ledger 记录该承诺边界的 converged_dimensions，后续轮次不再重审已收敛维度，第 3 轮起 spawn prompt 只含未收敛维度与上一轮 change 条目，不附计划全文（增量收敛协议）。多任务只对公共契约、状态机、SQL、事务或外部副作用边界做独立 task review；机械叶子任务由主会话复验，最终 integration reviewer 统一收口。coder 只修改授权文件，按 packet 验证并返回实际证据。
+多任务并发调度的五步循环、slot 优先序与 advisor 增量收敛协议（converged_dimensions、第 3 轮聚焦模式）见 [references/agent-lifecycle.md](references/agent-lifecycle.md)，进入阶段 5 或启动承诺边界审查时加载。多任务只对公共契约、状态机、SQL、事务或外部副作用边界做独立 task review；机械叶子任务由主会话复验，最终 integration reviewer 统一收口。coder 只修改授权文件，按 packet 验证并返回实际证据。
 
 输出：按 G2/G4 路由的实施计划与派发指令。
 
@@ -196,7 +179,7 @@ advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺
 
 每轮 coder 返回后，主会话必须：
 
-1. 先读取子代理阶段报告（scripts/task_report.py read --run-id <id> --task-id <tid>）确认其自述状态，再检查 git status --short、完整 diff、未跟踪文件和允许范围；报告与 diff 不一致时以 diff 为准并按范围外变化处理。不得以大规模文件变更扫描代替报告读取。
+1. coder 终态返回后先读取子代理阶段报告（scripts/task_report.py read --run-id <id> --task-id <tid>）确认其自述状态：仅当报告为 completed 才展开 git status --short、完整 diff、未跟踪文件和允许范围的复验；报告为 blocked/in_progress 时按 gaps/summary 处理，不展开 diff。进入复验后报告与 diff 不一致时以 diff 为准并按范围外变化处理。不得在读取报告前用文件变更扫描判断子代理进度。
    存在未跟踪新文件时，先对每个新文件执行 `git add -N <file>`（intent-to-add，仅让 diff 可见）
    再运行 `git diff --check`；不得因此顺手 `git add` 提交。
 2. 发现范围外变化立即停止，不静默归入任务。
@@ -207,15 +190,10 @@ advisor 只给 proceed | change | stop，不能替主会话决策。每个承诺
 
 ### 7. Fresh review 与修正循环
 
-reviewer 必须使用独立、上下文干净的线程，行为只读，并按 task-contracts.md 返回。派发后第一步必须运行 `scripts/review_preflight.py`（确定性前置，不调用 LLM；完整口径见 [references/review-routing.md](references/review-routing.md)）：
+reviewer 必须使用独立、上下文干净的线程，行为只读，并按 task-contracts.md 返回。派发后第一步必须运行 `scripts/review_preflight.py`（确定性前置，不调用 LLM）。
 
-reviewer 的 spawn prompt 必须直接以 task-contracts.md 的 `ROLE_LOCK` 开头，不得添加“按 coding-review-pipeline”“将契约交给 fresh reviewer”“请再派发 reviewer”等主会话叙事。`coding-review-pipeline` 只供主会话编排；不得要求 reviewer 加载或使用本 skill。spawn 返回 agent id 即表示 reviewer 已完成派发，子代理只消费 review package，不再转交、调度或创建任何代理。
 
-reviewer spawn prompt 只包含三要素：`ROLE_LOCK`、preflight 命令行、verdict 返回格式；审查事实包通过文件传递（reviewer 自行读取），不内联在 prompt 正文中。
-
-1. 以 `--facts <change facts>` 加可选 `--task-facts` / `--verification` 运行 review_preflight.py：detect-and-reuse 可用 analyzer、归一化 finding、diff 归因与去重、构建 negative coverage、打包 P0-P3 review context。
-2. 消费 preflight 输出审查：attributable 的机器阻断（new secret、known vulnerable dependency、verification exit_code != 0、project-configured analyzer hard failure）直接采信；MACHINE COVERAGE 的 clean/skipped/failed/unsupported 决定 FOCUS ON 与预算分配；`review_context` 按 P0-P3 逐级消费，不在一启动就搜全仓。
-3. ocr 只是 optional rule enrichment：preflight 检测到 `ocr` 时，`ocr.rule_context` 作为附加规则源参考；不可用时 preflight 输出 `ocr.state=skipped` 并继续，review 照常按第 1-2 步完成，绝不 STOP、绝不跳过规则审查。
+reviewer spawn prompt 构造规则（ROLE_LOCK 三要素、禁止二次派发叙事）与 preflight 输出消费口径见 [references/review-routing.md](references/review-routing.md)，派发 reviewer 时加载。
 
 审查结论按 task-contracts.md 返回：
 
@@ -223,7 +201,7 @@ reviewer spawn prompt 只包含三要素：`ROLE_LOCK`、preflight 命令行、v
 - fix-first：列出文件、位置、证据和必需修复。
 - rethink：架构或契约需要主会话重新定案。
 
-fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置派后续 coder。rethink 回到探索与计划阶段。任何代码变化后必须重新复验并获取 fresh verdict。
+fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置派后续 coder。rethink 回到探索与计划阶段。有界重探索：fix-first 的原 coder 允许做只读重定位（读 packet 只读依赖清单内的文件、重跑定向测试定位根因），不视为范围扩大、不升级 rethink；但写集、接口契约或验收标准的任何变化仍必须走 BLOCKED 回抛主会话。任何代码变化后必须重新复验并获取 fresh verdict。
 
 单个任务和集成 review 各最多 3 轮；仍不收敛时停止并向用户报告累计证据。独立任务可继续，但不得在未全部 ship 前声明整体完成。reviewer 作用域分层：单边界 task review 只消费该任务的 diff、触及的接口签名和 preflight 索引；integration review 消费跨模块接口契约、各任务 verdict 摘要和最终全量 diff 的统计概览，需要细节时再读取具体文件，不默认全量内联。
 
@@ -243,11 +221,10 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - 派发前建立 changed-file baseline，保留已有脏文件和用户修改；具体做法见 recovery-and-failures.md。
 - 已归属、与写集不重叠且无中断/运行代理的用户修改属于 `KNOWN_DIRTY_BASELINE`，不单独触发 recovery。
 - 只回收已完成且无需追问、修复或恢复的线程；先保存任务状态、实际文件清单、证据和 verdict。
-- 中断或上下文压缩恢复时，先从 canonical ledger 读取最近一次 `model_selection` 事件；schema 仍支持时向用户展示四项并请求一行确认，不得重新推荐或重新展开全部选项。
-- 中断恢复时先检查工作树与线程状态，再从最近安全阶段继续；不得未检查就重复派发或覆盖改动。
+- 恢复协议（压缩/中断后按固定顺序执行，禁止通读长上下文找回状态）：① 读 canonical ledger——最近 model_selection（schema 仍支持时展示四项请求一行确认即复用）、analysis_notes 最近条目、各任务最新 verdict 与 fingerprint；② 用 task_report.py read 确认各 active 任务最新阶段报告的 completed/blocked/in_progress 真实位置；③ 核对 git status --short 与 ledger diff_fingerprint，一致则从第一个未闭环阶段继续，不一致先做范围核对再继续。不得未检查就重复派发或覆盖改动。
 - 工具、模型、线程、范围或验证失败按 recovery-and-failures.md 的 if-then 表处理，失败路径不得吞掉。
 
-长时间异步工作只在状态转换时通知用户：`blocked/input-required`、`completed`、`errored`、`fix-first` 或 `ship`。`running` 且无新事实的等待超时不是进度事件：不得发送“仍在运行/继续等待”，不得读取行数、哈希或写集验活，不得催促代理。等待时长与测试执行模式由 `scripts/wait_strategy.py` 程序化决定（输入任务数、涉及文件数与风险等级），主会话不自行估算：单次长等待按脚本输出的 wait_agent_ms 执行；小套件 foreground_wait 直接看输出，中大套件后台执行并读结果文件；外层 `functions.exec` 比最长嵌套等待至少多 30000 ms。终端 session 的空 `write_stdin` 轮询至少 180000 ms、优先 300000 ms；非空交互输入不应用长等待。
+长时间异步工作只在状态转换时通知用户：`blocked/input-required`、`completed`、`errored`、`fix-first` 或 `ship`。`running` 且无新事实的等待超时不是进度事件：不得发送“仍在运行/继续等待”，不得读取行数、哈希或写集验活，不得催促代理。等待时长与测试执行模式由 `scripts/wait_strategy.py` 程序化决定，主会话不自行估算；模式阈值、公式与上下限以该脚本输出为准（细节见 agent-lifecycle.md）。终端 session 的空 `write_stdin` 轮询至少 180000 ms、优先 300000 ms；非空交互输入不应用长等待。
 
 ## 标准提交规则（固定动作）
 
