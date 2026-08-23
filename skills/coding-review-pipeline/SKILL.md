@@ -179,7 +179,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 
 每轮 coder 返回后，主会话必须：
 
-1. 先读取子代理阶段报告（scripts/task_report.py read --run-id <id> --task-id <tid>）确认其自述状态，再检查 git status --short、完整 diff、未跟踪文件和允许范围；报告与 diff 不一致时以 diff 为准并按范围外变化处理。不得以大规模文件变更扫描代替报告读取。
+1. coder 终态返回后先读取子代理阶段报告（scripts/task_report.py read --run-id <id> --task-id <tid>）确认其自述状态：仅当报告为 completed 才展开 git status --short、完整 diff、未跟踪文件和允许范围的复验；报告为 blocked/in_progress 时按 gaps/summary 处理，不展开 diff。进入复验后报告与 diff 不一致时以 diff 为准并按范围外变化处理。不得在读取报告前用文件变更扫描判断子代理进度。
    存在未跟踪新文件时，先对每个新文件执行 `git add -N <file>`（intent-to-add，仅让 diff 可见）
    再运行 `git diff --check`；不得因此顺手 `git add` 提交。
 2. 发现范围外变化立即停止，不静默归入任务。

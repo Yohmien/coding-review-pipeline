@@ -211,7 +211,7 @@ mutation，wait 观察返回无终端结果。唯一允许 `KEEP` / `WAIT`，确
 1. 进入阶段 5，以及任一 coder/reviewer 出现 blocked、completed、fix-first 或 ship 时，立即以最新前驱闭包重跑 task_graph.py。READY_CODING = ready - active - waiting_verification - waiting_review - fix_required；topological_order 只表达依赖，不是串行执行顺序。
 2. 计算共享 agent 容量的空闲 slot，从 READY_CODING 选择不超过容量的最大两两 parallel-safe 子集；冲突时只从每个冲突分量选一个并保留所有独立任务。容量不足依次优先：原 coder 的 fix-first、能解锁后继的 task review/coder、最长剩余关键路径、后继数、风险等级、TASK_ID。
 3. 同一调度轮发出全部选中 spawn 调用；每次 spawn 返回 agent id 后立即派下一个，不在两个 spawn 之间等待工作结果。某一 spawn 失败只阻塞该任务并继续派发其他独立任务，不得把整轮降级为串行。
-4. coder 返回后主会话立即独立复验；任务 diff 已稳定且与运行中任务无依赖时立即派 fresh task reviewer 与其他 coder/reviewer 并发。机械叶子通过主会话复验即可解锁后继；要求 task review 的边界任务只有 ship 后才计入 completed 集合。
+4. wait_agent 返回终态后，主会话先以 task_report.py read 确认该 coder 自述状态与摘要：报告 completed 才进入 diff 复验；报告 blocked 或 in_progress 时按其 gaps/summary 走对应处理，不展开 diff。确认进入复验后，任务 diff 已稳定且与运行中任务无依赖时立即派 fresh task reviewer 与其他 coder/reviewer 并发。机械叶子通过主会话复验即可解锁后继；要求 task review 的边界任务只有 ship 后才计入 completed 集合。
 5. 等待时把全部 active agent id 传入一次长 wait_agent（时长按 wait_strategy.py 决定），处理最先到达的终态后立刻回到第 1 步补位；不得逐个 agent 串行等待，也不得等待整批 coder 完成后才开始 task review。final integration reviewer 是唯一全局屏障。
 
 ## Advisor 增量收敛协议（承诺边界审查时加载）
