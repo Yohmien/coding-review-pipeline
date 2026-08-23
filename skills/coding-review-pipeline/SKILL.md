@@ -58,7 +58,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契约见 [references/routing-gates.md](references/routing-gates.md)）；只加载输出命中的 reference 与 skill，不复制其规则。
 
 - 在形成任何 coder、advisor 或 reviewer 提示前，读取 [references/task-contracts.md](references/task-contracts.md)。
-- verify/complete 阶段或 completion_claim 命中时，读取 [references/verification-routing.md](references/verification-routing.md)。
+- verify/complete 阶段或 completion_claim 命中时，读取 [references/verification-routing.md](references/verification-routing.md)；进入阶段 3 或处理模型选择时，读取 [references/model-selection.md](references/model-selection.md)。
 - G5 输出 `required`（incomplete ledger、running agent、dirty baseline、interrupted run、context recovery、unknown mutation 任一成立）时，读取 [references/recovery-and-failures.md](references/recovery-and-failures.md)。
 - 定位结构、调用关系、数据流或影响面时调用 search-gates；CodeGraph 图谱层缺失时由 search-gates 自身降级 rg 锁定，不在本 skill 复制搜索细则。
 - G1 输出 `REQUIRES_USER_DECISION` 时调用 grill-with-docs（传递 grilling / domain-modeling），追问口径见第 1.5 节；G1 输出 `NONE` 时跳过。
@@ -141,16 +141,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 
 ### 3. Live 能力与模型确认
 
-计划确认后：
-
-1. 从当前 spawn_agent schema 读取模型与 reasoning_effort 枚举，并核实可显式传递所选值；读不到 live schema（spawn_agent 工具缺失、枚举为空或读取失败）时同样触发 🔴 CHECKPOINT · 🛑 STOP：报告缺失能力，不得回退到历史记忆、静态清单或上次会话记录猜测。
-2. 依据已确认计划的复杂度，先紧凑推荐 coding model、review model、coding effort、review effort 四项；模型使用 live schema 中的完整 ID，effort 使用精确枚举值。
-3. 在请求选择前检查展示覆盖率：若当前推荐与候选未覆盖全部模型条目或全部 effort 条目，紧凑展示所有模型完整 ID、effort 并集，以及每个模型支持的 effort；已覆盖时不重复展开。
-4. 请用户确认四项。自由文本可一次填写；使用结构化输入时，以当前 schema 为准，用最少轮次收齐四项，每题必须使用允许的最大显式选项数，并把推荐项置顶。
-5. 结构化输入无法容纳全部条目时，先在正文完整展示清单；UI 只放允许数量的优先候选，其余条目通过自由输入完整 ID 或精确 effort 值选择，不得因 UI 限制隐藏或排除任何 live 选项。
-6. 用户已在本会话确认且 schema 仍支持时复用；用户改选、上下文缺失或 schema 变化时重新确认。
-7. 四项确认后立即写入 canonical ledger（`model_selection` 事件，含完整模型 ID、effort、时间戳）。上下文压缩或中断恢复时从 ledger 读回最近一次确认，展示"上次确认的四项是 X/Y/Z/W，schema 仍支持，是否沿用？"；用户一行确认即复用，不得重新走完整第 3 步。
-8. 进入本阶段时立即读取 spawn_agent live schema 并把模型/effort 枚举快照写入 ledger（model_schema_snapshot 事件）；用户询问可用模型或给出选择时先对照快照即时判定，不得在用户选择后才首次读取 schema。首次使用一个从未在本 run 中成功派发过的模型组合时，把探针语义合并到该 run 首个正式任务的 spawn prompt（首行要求回复 OK 后再执行任务）；返回无 error 且含正常任务产出即视为探针通过。首个正式派发连续 2 次以同一线路级错误失败（协议错误、额度拒绝、运行时不可达）即判定该组合不可用，按 Provider 连续失败降级处理，不得为探针单独消耗一轮派发。
+计划确认后：立即读取 spawn_agent schema 并核实四项可选（读不到 live schema 时触发下方 STOP）；紧凑推荐 coding/review model 与 effort 四项请用户确认；确认后写入 canonical ledger（model_selection 事件）。展示覆盖率、结构化输入收口、复用条件、schema 快照与探针合并的完整口径见 [references/model-selection.md](references/model-selection.md)（进入本阶段时加载）。
 
 🔴 CHECKPOINT · 🛑 STOP：四项未确认，或 live 工具不支持任一选择时，停止编码并报告缺失能力；不得使用静态候选、静默降级或主会话代写。
 
