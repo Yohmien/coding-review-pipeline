@@ -41,6 +41,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 - `KNOWN_DIRTY_BASELINE`：已有修改已归属用户、与当前写集不重叠，且没有中断 run、运行中代理或来源不明变化。只记录 changed-file baseline；不得仅因此进入 G5 recovery、重做历史审计或创建平行事实制品。
 
 任一条件无法由当前证据证明时不猜测，回到完整状态机。
+- `SUBAGENT_UNAVAILABLE_FALLBACK`：coding/review 子代理因外部原因（provider 额度耗尽、provider 运行时故障、账号限制）全部不可用时，经用户明确选择"主会话直改直审"后启用。主会话承担 coder + reviewer 双角色，但仍执行完整 RED→GREEN、独立复验、diff check、台账记录和 completion_gate；不得因子代理不可用而跳过任何验证步骤或降低验收标准。
 
 ## 首次响应硬门禁
 
@@ -97,6 +98,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 - 安装到 `$CODEX_HOME/skills`（默认 `~/.codex/skills`），目录名必须等于 frontmatter `name`。
 - 各依赖的权威来源与安装命令见开源仓库 README 的三分类依赖表；本机可用 `skill-installer` 按 GitHub 目录 URL 安装。
 - 验证：目录存在、frontmatter `name` 与目录名一致、`references/` 全部文件与 `scripts/` 全部脚本完整、兄弟 skill `contract-executor` 已同步安装（缺失 fail closed）、`python scripts/validate.py skills/coding-review-pipeline skills/contract-executor` 全部输出 `Skill is valid!`。
+   另须预检 canonical ledger 目录（`$CODEX_HOME/state/coding-review-pipeline/<workspace-id>/runs/`）的写权限：不可写时在进入状态机前提示修复，不得跑到中途才发现台账写入失败。
 
 ## 核心状态机
 
@@ -109,6 +111,7 @@ Gate 与路由以 `scripts/route_context.py` 的 G1-G5 输出为准（可读契�
 3. 缺陷先复现并形成根因证据，禁止猜测式修改。
 4. 主会话只定案可由仓库事实、已确认用户决定或既有权威契约唯一确定的接口与边界；出现互斥高影响方案时进入 G1，不得自行选择。
 5. 判定风险等级与任务依赖，列出允许修改的文件集合。
+6. 改动涉及用户可感知的业务流程变化时，在形成完整计划前必须主动向用户询问冒烟测试场景（端到端业务链路），并逐项确认：每步的触发条件、输入数据、预期结果、通过标准、边界情况（部分失败/重试/并发）；不得凭代码阅读自行推断链路语义后直接写入计划，也不得等用户提供——必须主动问。确认结论作为场景验证条件的权威来源写入计划。
 
 输出：change facts、根因证据、已定案接口与边界、允许修改的文件集合。
 
@@ -144,6 +147,8 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 4. 请用户确认四项。自由文本可一次填写；使用结构化输入时，以当前 schema 为准，用最少轮次收齐四项，每题必须使用允许的最大显式选项数，并把推荐项置顶。
 5. 结构化输入无法容纳全部条目时，先在正文完整展示清单；UI 只放允许数量的优先候选，其余条目通过自由输入完整 ID 或精确 effort 值选择，不得因 UI 限制隐藏或排除任何 live 选项。
 6. 用户已在本会话确认且 schema 仍支持时复用；用户改选、上下文缺失或 schema 变化时重新确认。
+7. 四项确认后立即写入 canonical ledger（`model_selection` 事件，含完整模型 ID、effort、时间戳）。上下文压缩或中断恢复时从 ledger 读回最近一次确认，展示"上次确认的四项是 X/Y/Z/W，schema 仍支持，是否沿用？"；用户一行确认即复用，不得重新走完整第 3 步。
+8. 首次使用一个从未在本 run 中成功派发过的模型组合时，先派一个最小探针任务（prompt 仅含"回复 OK"）验证端到端可达：返回包含 OK 且无 error 即通过，再正式派发。探针连续 2 次失败即判定该组合不可用，按 Provider 连续失败降级处理，不正式派发。
 
 🔴 CHECKPOINT · 🛑 STOP：四项未确认，或 live 工具不支持任一选择时，停止编码并报告缺失能力；不得使用静态候选、静默降级或主会话代写。
 
@@ -152,6 +157,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 ### 4. 生成任务契约
 
 1. 按 task-contracts.md 生成五段 coder packet：目标、文件所有权、接口、约束、验证。
+    以探索阶段（第 1 节第 6 条）向用户询问并确认的冒烟测试场景为唯一权威来源，写入 packet 验证段；格式、判定和 reviewer 审查口径见 [references/verification-routing.md](references/verification-routing.md) 场景验证节。自动化测试全绿但场景未全部执行 = 验证不完整。
 2. 派发前用 `scripts/validate_task_packet.py` 校验 packet；输出 BLOCKED 时按 evidence 修正，不得绕过派发。
 3. 规格定案所有影响接口、契约、安全和范围的判断；允许 coder 处理局部低风险实现判断，但必须在返回中报告。
 4. 每个任务声明可写集和必要只读依赖；禁止转发主会话完整对话或其他子代理 raw 对话。
@@ -202,6 +208,8 @@ reviewer 必须使用独立、上下文干净的线程，行为只读，并按 t
 
 reviewer 的 spawn prompt 必须直接以 task-contracts.md 的 `ROLE_LOCK` 开头，不得添加“按 coding-review-pipeline”“将契约交给 fresh reviewer”“请再派发 reviewer”等主会话叙事。`coding-review-pipeline` 只供主会话编排；不得要求 reviewer 加载或使用本 skill。spawn 返回 agent id 即表示 reviewer 已完成派发，子代理只消费 review package，不再转交、调度或创建任何代理。
 
+reviewer spawn prompt 只包含三要素：`ROLE_LOCK`、preflight 命令行、verdict 返回格式；审查事实包通过文件传递（reviewer 自行读取），不内联在 prompt 正文中。
+
 1. 以 `--facts <change facts>` 加可选 `--task-facts` / `--verification` 运行 review_preflight.py：detect-and-reuse 可用 analyzer、归一化 finding、diff 归因与去重、构建 negative coverage、打包 P0-P3 review context。
 2. 消费 preflight 输出审查：attributable 的机器阻断（new secret、known vulnerable dependency、verification exit_code != 0、project-configured analyzer hard failure）直接采信；MACHINE COVERAGE 的 clean/skipped/failed/unsupported 决定 FOCUS ON 与预算分配；`review_context` 按 P0-P3 逐级消费，不在一启动就搜全仓。
 3. ocr 只是 optional rule enrichment：preflight 检测到 `ocr` 时，`ocr.rule_context` 作为附加规则源参考；不可用时 preflight 输出 `ocr.state=skipped` 并继续，review 照常按第 1-2 步完成，绝不 STOP、绝不跳过规则审查。
@@ -218,11 +226,21 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 
 输出：fresh verdict（ship / fix-first / rethink）。
 
+#### Provider 连续失败降级
+
+同一 provider 的 reviewer/coder 派发连续 3 次以相同非业务错误（协议错误、额度拒绝、运行时不可达）失败时，判定该 provider 对当前角色不健康：
+
+1. 停止重试；把三次失败的模型、effort、错误摘要写入 canonical ledger。
+2. 从 live schema 中排除该 provider，生成剩余可用模型/effort 组合的紧凑替代列表。
+3. 向用户报告：失败证据表（尝试×模型×结果）、根因判断、替代选项列表；等待用户选择后继续。不得静默换模型、降 effort 或放弃 fresh review。
+4. 若排除后无任何可用组合，触发 `SUBAGENT_UNAVAILABLE_FALLBACK`。
+
 ## 工作树、线程与恢复
 
 - 派发前建立 changed-file baseline，保留已有脏文件和用户修改；具体做法见 recovery-and-failures.md。
 - 已归属、与写集不重叠且无中断/运行代理的用户修改属于 `KNOWN_DIRTY_BASELINE`，不单独触发 recovery。
 - 只回收已完成且无需追问、修复或恢复的线程；先保存任务状态、实际文件清单、证据和 verdict。
+- 中断或上下文压缩恢复时，先从 canonical ledger 读取最近一次 `model_selection` 事件；schema 仍支持时向用户展示四项并请求一行确认，不得重新推荐或重新展开全部选项。
 - 中断恢复时先检查工作树与线程状态，再从最近安全阶段继续；不得未检查就重复派发或覆盖改动。
 - 工具、模型、线程、范围或验证失败按 recovery-and-failures.md 的 if-then 表处理，失败路径不得吞掉。
 
@@ -258,3 +276,4 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 - ready 非空且存在空闲 slot 时只派一个任务、等待整批 coder 后才启动 task review、因一组冲突全局串行、或逐个等待 active agent。
 - advisor 暴露新的高影响互斥选择后由主会话自行定案，或在聚焦复核只剩措辞时继续 advisor 自循环。
 - 为同一 run 创建 canonical ledger 之外的 task/verification/completed 平行事实文件。
+- 子代理不可用时未经用户选择"主会话直改直审"就由主会话代写代码，或在报告替代选项前静默放弃 fresh review。

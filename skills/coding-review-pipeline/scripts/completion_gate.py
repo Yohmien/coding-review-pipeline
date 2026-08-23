@@ -178,6 +178,43 @@ def _check_verification_records(
             reasons.append("stale_verification")
 
 
+def _check_scenario_checks(
+    ledger: dict,
+    current_fp: object,
+    reasons: list[str],
+) -> None:
+    """Check scenario validation completeness.
+
+    Fail-closed when plan declares has_scenario_conditions but tasks lack
+    scenario_checks or any check is not all_pass=True on current fingerprint.
+    """
+    plan = ledger.get("plan")
+    if not isinstance(plan, dict):
+        return
+    if not plan.get("has_scenario_conditions"):
+        return
+    tasks = ledger.get("tasks")
+    if not isinstance(tasks, dict):
+        return
+    for task in tasks.values():
+        if not isinstance(task, dict):
+            continue
+        checks = task.get("scenario_checks")
+        if not isinstance(checks, list) or not checks:
+            reasons.append("stale_verification")
+            continue
+        for check in checks:
+            if not isinstance(check, dict):
+                reasons.append("stale_verification")
+                continue
+            if check.get("all_pass") is not True:
+                reasons.append("machine_blocker")
+            if not _fingerprint_current(
+                check.get("diff_fingerprint"), current_fp
+            ):
+                reasons.append("stale_verification")
+
+
 def _check_tasks(
     ledger: dict,
     planned_ids: set[str] | None,
@@ -319,6 +356,7 @@ def evaluate(ledger: dict, change_facts: object = None) -> dict:
     _check_plan_validity(planned_ids, reasons)
     _check_plan_freshness(ledger, reasons)
     _check_tasks(ledger, planned_ids, current_fp, reasons)
+    _check_scenario_checks(ledger, current_fp, reasons)
     _check_agents(ledger, reasons)
     _check_integration(ledger, current_fp, reasons)
     _check_unknown_files(ledger, change_facts, reasons)

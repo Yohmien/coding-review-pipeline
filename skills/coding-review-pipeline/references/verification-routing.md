@@ -47,6 +47,29 @@
 
 红绿证据以目标行为缺失导致的失败为准，不得用语法/依赖/环境错误充当红态；实现前无法保留自然红态时使用五步红变体并确认 diff 不含临时变体。
 
+## 场景验证（Scenario Validation）
+
+主会话在探索阶段向用户询问并确认的冒烟测试场景（见 SKILL.md 第 1 节第 6 条），作为 packet 验证段的独立场景验证条件。每条场景条件按以下结构写入 ledger 的 `scenario_checks`：
+
+```json
+{
+  "scenario_id": "S1",
+  "description": "用户链路的一句话摘要",
+  "steps": [
+    {"action": "操作/输入", "expected": "预期结果", "pass": true}
+  ],
+  "all_pass": true,
+  "executed_by": "main_session",
+  "timestamp": "..."
+}
+```
+
+硬约束：
+
+- 自动化测试全绿但 `scenario_checks` 缺失或 `all_pass != true` 时，视为验证不完整，completion_gate 输出 `BLOCKED`。
+- 场景步骤由主会话在复验阶段逐步执行；不得以"代码逻辑上应该成立"代替实际执行。
+- 场景验证结果与 diff_fingerprint 关联；diff 变化后必须重跑受影响的场景步骤。
+
 ## 未跟踪文件
 
 - 指纹与验证记录必须覆盖未跟踪新文件路径：`change_facts.py` 输出的 `untracked_files` 为路径

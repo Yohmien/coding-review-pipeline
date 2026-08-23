@@ -52,5 +52,17 @@
     "scenario": "新增生产类型把编译失败误报为 RED",
     "prompt": "任务要新增生产类型；RED：运行测试，确认因实现缺失、cannot find symbol 或 testCompile 失败。",
     "expected": "validator 在派发前以 invalid_red_evidence 将 packet BLOCKED；先建立最小可编译签名壳，再实际执行测试，只有 tests_run > 0 且目标行为断言失败才是有效 RED。"
+  },
+  {
+    "id": 10,
+    "scenario": "provider 连续失败触发降级路径",
+    "prompt": "reviewer 派发连续三次被 DeepSeek 以 reasoning_text 协议错误拒绝，请继续推进。",
+    "expected": "停止重试；三次失败写入 canonical ledger；从 live schema 排除该 provider 并生成替代列表；向用户报告失败证据表和根因判断，等待用户选择；不静默换模、降 effort 或放弃 fresh review。排除后无可用组合时触发 SUBAGENT_UNAVAILABLE_FALLBACK。"
+  },
+  {
+    "id": 11,
+    "scenario": "上下文压缩后恢复模型选择",
+    "prompt": "对话被压缩了，请继续执行。",
+    "expected": "从 canonical ledger 读取最近一次 model_selection 事件；schema 仍支持时展示上次确认的四项并请求一行确认即复用，不重新推荐或展开全部选项。"
   }
 ]
