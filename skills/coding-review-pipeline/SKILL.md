@@ -25,7 +25,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 
 ## 不可变原则
 
-1. 除下述 `DIRECT_PATCH` 外，主会话不得直接编写项目源码；修复规格后重新委派，不静默代写。
+1. 除下述 `DIRECT_PATCH` / `SIMPLE_PATCH` 外，主会话不得直接编写项目源码；修复规格后重新委派，不静默代写。
 2. 计划和模型选择都由主会话与用户确认，子代理不得重复前置审批。
 3. 不从历史记忆猜测模型、effort 或工具能力；每次编码任务读取当前 live schema。
 4. 不静默替换模型、降低 effort、跳过 reviewer 或把部分验证说成全部通过。
@@ -37,6 +37,7 @@ description: 项目源码与自动化测试变更的架构、编码、复审和�
 进入完整状态机前先判定以下短路；命中即跳过与结果无关的计划、模型、packet、代理和恢复动作：
 
 - `DIRECT_PATCH`：用户明确要求主会话快速修改；目标、紧耦合源码/测试写集和验收均已明确；且不涉及公共 API、schema、持久化数据、事务、并发、权限、依赖或外部副作用。主会话保护工作树后直接完成最小修改、行为 RED、GREEN、`git diff --check` 和定向验证，不要求模型选择，不派 coder/reviewer。
+- `SIMPLE_PATCH`（复杂度门控，无需用户点名）：满足全部条件时自动进入主对话自修分支——①单文件或紧耦合双文件写集；②纯应用层逻辑，无公共 API/schema/事务/并发/迁移/依赖变化；③修改意图一句话可说清且验收标准明确（已有测试或一行命令可验）；④预估 diff ≤30 行。主对话按 ponytail 阶梯完成最小修改 + 定向验证 + 标准提交；复用判断（ladder 复用层级）由主对话在 READ 时完成并记录到提交信息。任一条件不满足 → 回完整状态机。
 - `CONFIRMED_CONTINUATION`：完整计划、当前任务 packet 和四项模型选择已经确认，前驱已 ship。只核对最新检查点、写集无漂移且既有选择仍受 live schema 支持，然后直接派发当前任务；不得重做探索、计划、模型询问或无关搜索。
 - `KNOWN_DIRTY_BASELINE`：已有修改已归属用户、与当前写集不重叠，且没有中断 run、运行中代理或来源不明变化。只记录 changed-file baseline；不得仅因此进入 G5 recovery、重做历史审计或创建平行事实制品。
 
@@ -135,7 +136,7 @@ advisor 返回 `change` 后必须重新检查 G1：只要它新增或改变公�
 - 追问阶段已更新的 glossary / ADR（如有）及其与实施任务的关系。
 - 测试与验证命令、风险、回滚或补偿。
 
-🔴 CHECKPOINT · 🛑 STOP：除 `DIRECT_PATCH` 和 `CONFIRMED_CONTINUATION` 外，用户未确认完整计划前，不展示模型选择，不派 coding 子代理，不修改项目代码。
+🔴 CHECKPOINT · 🛑 STOP：除 `DIRECT_PATCH`、`SIMPLE_PATCH` 和 `CONFIRMED_CONTINUATION` 外，用户未确认完整计划前，不展示模型选择，不派 coding 子代理，不修改项目代码。
 
 输出：已确认的完整计划。
 
@@ -228,7 +229,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 
 ## 标准提交规则（固定动作）
 
-代码发生变更时（coder 返回后主会话复验通过、或主会话 DIRECT_PATCH 完成验证），提交是固定动作而非判断项：只要本次 run 产生了项目源码/测试/SQL 变更且通过复验，必须立即创建一个标准 commit 说明修改内容，供后续回滚与会话快速回顾。提交信息格式：`fix|feat|refactor|test(范围): 一句话核心修改`，正文列出关键文件与验证命令结果。禁止询问“是否需要提交”、禁止把多个逻辑变更合并成含糊的单一提交；文档与台账类变更不触发此规则。
+代码发生变更时（coder 返回后主会话复验通过、或主会话 SIMPLE_PATCH/DIRECT_PATCH 完成验证），提交是固定动作而非判断项：只要本次 run 产生了项目源码/测试/SQL 变更且通过复验，必须立即创建一个标准 commit 说明修改内容，供后续回滚与会话快速回顾。提交信息格式：`fix|feat|refactor|test(范围): 一句话核心修改`，正文列出关键文件与验证命令结果。禁止询问“是否需要提交”、禁止把多个逻辑变更合并成含糊的单一提交；文档与台账类变更不触发此规则。
 
 ## 完成条件
 
@@ -236,7 +237,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 
 只有同时满足以下条件才可声明完成（确定性检查以 `scripts/completion_gate.py` 输出为准，`COMPLETE_ALLOWED` 才放行）：
 
-1. 要求独立 task review 的边界任务获得当前 diff 对应的 fresh ship；机械叶子任务完成主会话复验，整体获得当前 diff 对应的 fresh integration ship。`DIRECT_PATCH` 以主会话最新验证代替 reviewer verdict。
+1. 要求独立 task review 的边界任务获得当前 diff 对应的 fresh ship；机械叶子任务完成主会话复验，整体获得当前 diff 对应的 fresh integration ship。`SIMPLE_PATCH` / `DIRECT_PATCH` 以主会话最新验证代替 reviewer verdict。
 2. 主会话确认最终实际改动文件均在范围内，并标注在原有脏文件上继续的修改。
 3. 按 verification-before-completion 获得最新完整验证证据。
 4. 明确列出未执行验证及客观原因。
@@ -246,7 +247,7 @@ fix-first 路由回原 coder；不可恢复时用相同已确认 coding 设置�
 
 ## 核心黑名单
 
-- 未命中 `DIRECT_PATCH` 时主会话直接编辑项目源码，或静默修补失败 patch。
+- 未命中 `DIRECT_PATCH` / `SIMPLE_PATCH` 时主会话直接编辑项目源码，或静默修补失败 patch。
 - 未确认计划或四项模型/effort 就派发 coding。
 - 信任 worker 自报而不检查实际 diff 和重跑验证。
 - 并行修改重叠文件，或把 raw 子代理对话转给其他代理。
