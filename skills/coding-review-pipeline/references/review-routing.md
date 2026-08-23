@@ -41,7 +41,7 @@ reuse via CI/report not implemented」）；第 4 级 lightweight CRP tooling �
 
 reviewer 的 spawn prompt 必须直接以 task-contracts.md 的 `ROLE_LOCK` 开头，不得添加「按 coding-review-pipeline」「将契约交给 fresh reviewer」「请再派发 reviewer」等主会话叙事。`coding-review-pipeline` 只供主会话编排；不得要求 reviewer 加载或使用本 skill。spawn 返回 agent id 即表示 reviewer 已完成派发，子代理只消费 review package，不再转交、调度或创建任何代理。
 
-prompt 正文只包含三要素：`ROLE_LOCK`、preflight 命令行、verdict 返回格式；审查事实包通过文件传递（reviewer 自行读取），不内联在 prompt 正文中。消费 preflight 输出：attributable 机器阻断（new secret、known vulnerable dependency、verification exit_code != 0、configured analyzer hard failure）直接采信；MACHINE COVERAGE 的 clean/skipped/failed/unsupported 决定 FOCUS ON 与预算；review_context 按 P0-P3 逐级消费，不在一启动就搜全仓。ocr 只是 optional rule enrichment：不可用时照常完成 review，绝不 STOP、绝不跳过规则审查。
+prompt 正文只包含三要素：`ROLE_LOCK`、preflight 命令行、verdict 返回格式；审查事实包通过文件传递（reviewer 自行读取），不内联在 prompt 正文中。消费 preflight 输出：attributable 机器阻断（new secret、known vulnerable dependency、verification exit_code != 0、configured analyzer hard failure）直接采信；MACHINE COVERAGE 的 clean/skipped/failed/unsupported 决定 FOCUS ON 与预算；review_context 按 P0-P3 逐级消费，不在一启动就搜全仓。
 
 ## Analyzer 检测
 
