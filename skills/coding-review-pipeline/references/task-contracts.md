@@ -43,6 +43,10 @@ GAPS: 阻塞、规格矛盾、缺失输入、验证缺口或范围外风险；�
 
 `STATUS: completed` 只表示该局部任务按契约完成，不替代独立 review 或最终集成验证。
 
+### 共享前言（Shared Preamble）
+
+多任务 run 中，AGENTS.md 摘要、项目约定、通用 BLOCKED 条件和 RED/GREEN 判定标准写一次到 ledger 目录的 shared-preamble.md；每个 packet 在 FILES AND OWNERSHIP 之前用一行引用（SHARED_PREAMBLE: <path>）指向该文件，不再逐包内联。coder 在 READ 阶段加载引用文件。单任务 run 可直接内联，不强制抽离。
+
 ## Commitment-Boundary Advisor Package
 
 高风险改动在承诺实现方向前，交给只读 advisor 检查决策边界。advisor 不改文件、不实现方案、不派生其他代理。

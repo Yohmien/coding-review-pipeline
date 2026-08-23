@@ -47,6 +47,10 @@
 
 红绿证据以目标行为缺失导致的失败为准，不得用语法/依赖/环境错误充当红态；实现前无法保留自然红态时使用五步红变体并确认 diff 不含临时变体。
 
+## 复验增量（Delta Re-verification）
+
+fix-first 修正轮的主会话复验按 delta 口径执行：首轮全量；后续轮只运行受影响文件的定向命令 + `git diff --check`，集成级全量验证留给 final integration review 前最后一次执行。ledger 记录上一轮已通过的命令指纹（command + exit_code + diff_fingerprint）；定向命令未覆盖的已通过命令在最终全量前保持 fresh 状态。此规则不降低验收标准：final integration review 必须包含一次完整验证。
+
 ## 场景验证（Scenario Validation）
 
 主会话在探索阶段向用户询问并确认的冒烟测试场景（见 SKILL.md 第 1 节第 6 条），作为 packet 验证段的独立场景验证条件。每条场景条件按以下结构写入 ledger 的 `scenario_checks`：

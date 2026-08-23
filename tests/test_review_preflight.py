@@ -754,6 +754,39 @@ class TestCli(unittest.TestCase):
         self.assertEqual(tiers, ["P0", "P1", "P2", "P3"])
         self.assertEqual(out["ocr"]["state"], "skipped")
 
+    def test_out_index_prints_compact_summary_and_writes_package(self):
+        repo = self._repo({"src/App.java": "public class App {}\n"})
+        bin_dir = self._tmpdir("crp-review-bin-")
+        _write_fake_cli(bin_dir, "gitleaks", "[]")
+        _write_fake_cli(bin_dir, "semgrep", '{"results": []}')
+        _write_fake_cli(bin_dir, "ast-grep", "[]")
+        _write_fake_cli(bin_dir, "osv-scanner", '{"results": []}')
+        _write_fake_cli(bin_dir, "reviewdog", "whatever")
+
+        facts = _facts(repo_root=str(repo), changed_files=["src/App.java"], diff_ranges={})
+        facts_file = repo / "facts.json"
+        facts_file.write_text(json.dumps(facts), encoding="utf-8")
+
+        package_path = repo.parent / ("pkg-" + next(tempfile._get_candidate_names()) + ".json")
+        self.addCleanup(lambda: package_path.unlink(missing_ok=True))
+        proc = self._run(
+            repo,
+            bin_dir,
+            "--facts",
+            str(facts_file),
+            "--out-index",
+            str(package_path),
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        index = json.loads(proc.stdout)
+        self.assertEqual(index["package_path"], str(package_path.resolve()))
+        self.assertIn("finding_total", index)
+        self.assertIn("severity_counts", index)
+        full = json.loads(package_path.read_text(encoding="utf-8"))
+        self.assertIn("findings", full)
+        # compact stdout must be much smaller than the full package text
+        self.assertLess(len(proc.stdout), 2000)
+
     def test_detect_only_analyzer_never_runs_cli_even_when_present(self):
         repo = self._repo(
             {"src/App.java": "public class App {}\n", "pmd.xml": "<ruleset/>\n"}

@@ -1105,6 +1105,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--task-facts", default=None, help="task facts JSON file")
     parser.add_argument("--verification", default=None, help="verification records JSON file")
     parser.add_argument("--out", default=None, help="write the result JSON to this path")
+    parser.add_argument(
+        "--out-index",
+        default=None,
+        help="write the full package to this path and print a compact index instead of the full JSON",
+    )
     args = parser.parse_args(argv)
     try:
         root = crp_common.repo_root(args.repo)
@@ -1123,7 +1128,30 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.out:
             crp_common.atomic_json_write(args.out, result)
-        print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
+        if args.out_index:
+            crp_common.atomic_json_write(args.out_index, result)
+            findings = result.get("findings") or []
+            severity_counts: dict[str, int] = {}
+            for finding in findings:
+                severity = str(finding.get("severity", "?"))
+                severity_counts[severity] = severity_counts.get(severity, 0) + 1
+            machine = result.get("machine_coverage") or {}
+            index = {
+                "package_path": str(Path(args.out_index).resolve()),
+                "finding_total": len(findings),
+                "severity_counts": severity_counts,
+                "focus_on": result.get("focus_on"),
+                "machine_blockers": [
+                    b for b in (machine.get("blockers") or [])
+                ],
+                "analyzer_states": {
+                    name: (entry or {}).get("state")
+                    for name, entry in (machine.get("analyzers") or {}).items()
+                },
+            }
+            print(json.dumps(index, ensure_ascii=False, sort_keys=True))
+        else:
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
         return EXIT_OK
     except CrpError as error:
         emit_error(error)
